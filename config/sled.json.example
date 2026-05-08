@@ -1,0 +1,60 @@
+{
+  "enabled": true,
+  "paths": {
+    "videos": "/home/fpp/media/plugins/fpp-sled-mailbox/videos"
+  },
+  "schedule": {
+    "start": "16:00",
+    "end": "22:00"
+  },
+  "video": {
+    "idle": "idle.mp4",
+    "letter_clips": ["letter1.mp4", "letter2.mp4"],
+    "donation_clips": ["donation1.mp4"],
+    "play_timeout_s": 65
+  },
+  "pins": {
+    "letter": 17,
+    "donation": null
+  },
+  "car": {
+    "sequence_window_s": 0.8,
+    "cooldown_s": 1.5
+  },
+  "letter": {
+    "cooldown_s": 3.0
+  },
+  "donation": {
+    "cooldown_s": 5.0
+  },
+  "direction": {
+    "toward_reference": "AB",
+    "label_toward": "Inbound",
+    "label_away": "Outbound"
+  },
+  "ld2410": {
+    "enabled": false,
+    "min_energy": 20,
+    "A": {"port": "/dev/ttyUSB0", "min_energy": 20},
+    "B": {"port": "/dev/ttyUSB1", "min_energy": 20}
+  },
+  "dht11": {
+    "enabled": false,
+    "pin": 4,
+    "interval_s": 60
+  },
+  "mqtt": {
+    "use_fpp_settings": true,
+    "host": "",
+    "port": 1883,
+    "username": "",
+    "password": "",
+    "base": "sled",
+    "discovery": true,
+    "device_name": "SLED Santa Mailbox",
+    "device_id": "sled_mailbox"
+  },
+  "debug": {
+    "use_mock_inputs": false
+  }
+}

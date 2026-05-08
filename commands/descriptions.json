@@ -1,0 +1,20 @@
+[
+  {
+    "name": "SLED - Trigger Letter",
+    "description": "Simulate a letter being dropped in the Santa Mailbox and play the letter video clip.",
+    "script": "sled_cmd_letter.sh",
+    "args": []
+  },
+  {
+    "name": "SLED - Trigger Donation",
+    "description": "Simulate a donation being placed in the Santa Mailbox and play the donation video clip.",
+    "script": "sled_cmd_donation.sh",
+    "args": []
+  },
+  {
+    "name": "SLED - Stop Daemon",
+    "description": "Stop the SLED Santa Mailbox daemon.",
+    "script": "sled_cmd_stop.sh",
+    "args": []
+  }
+]

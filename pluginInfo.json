@@ -1,0 +1,19 @@
+{
+  "name": "fpp-sled-mailbox",
+  "longName": "SLED Santa Mailbox",
+  "description": "Santa's Letter Express Delivery — sensor-driven video playback, car counting, and Home Assistant integration for interactive Santa Mailbox displays.",
+  "author": "Nick Scilingo",
+  "homepage": "https://github.com/focusedonsound/fpp-sled-mailbox",
+  "category": "GPIO/Sensors",
+  "versions": [
+    {
+      "minFPPVersion": "10.0",
+      "maxFPPVersion": "0",
+      "branch": "main",
+      "sha": "",
+      "dependencies": {
+        "packages": ["python3-serial", "python3-paho-mqtt", "mpv"]
+      }
+    }
+  ]
+}
