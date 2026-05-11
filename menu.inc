@@ -1,14 +1,19 @@
 <?php
 # menu.inc — SLED Smart Letters to Santa
-# FPP reads this file from each plugin directory and calls list_plugin_entries()
-# with $menu set to the current nav section. We register under "content"
-# (Content Setup) so the page appears in that dropdown.
+# FPP reads this file from each plugin directory and injects matching entries
+# into the nav dropdown for the current menu section ($menu variable).
 
 $menuEntries = Array(
 	Array(
 		'text' => 'SLED Smart Letters',
 		'type' => 'content',
 		'page' => 'www/index.php',
+		'wrap' => 1
+	),
+	Array(
+		'text' => 'SLED Analytics',
+		'type' => 'status',
+		'page' => 'www/status.php',
 		'wrap' => 1
 	)
 );
