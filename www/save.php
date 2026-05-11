@@ -49,10 +49,19 @@ $cfg["schedule"]["start"] = pStr("schedule_start", "16:00");
 $cfg["schedule"]["end"]   = pStr("schedule_end",   "22:00");
 
 // ── LD2410 ────────────────────────────────────────────────────────────────
-$cfg["ld2410"]["enabled"]         = pBool("ld2410_enabled");
-$cfg["ld2410"]["A"]["port"]       = pStr("ld2410_port_a", "/dev/ttyUSB0");
-$cfg["ld2410"]["B"]["port"]       = pStr("ld2410_port_b", "/dev/ttyUSB1");
+$cfg["ld2410"]["enabled"]            = pBool("ld2410_enabled");
+$cfg["ld2410"]["A"]["port"]          = pStr("ld2410_port_a", "/dev/ttyUSB0");
+$cfg["ld2410"]["B"]["port"]          = pStr("ld2410_port_b", "/dev/ttyUSB1");
+$cfg["ld2410"]["A"]["min_energy"]    = max(1, min(100, pInt("ld2410_min_energy_a", 20)));
+$cfg["ld2410"]["B"]["min_energy"]    = max(1, min(100, pInt("ld2410_min_energy_b", 20)));
 
+// ── Car counting timings ──────────────────────────────────────────────────
+$cfg["car"]["sequence_window_s"]     = pFloat("sequence_window_s", 0.8);
+$cfg["car"]["cooldown_s"]            = pFloat("car_cooldown_s", 1.5);
+$cfg["car"]["parked_timeout_s"]      = max(10, pInt("parked_timeout_s", 180));
+$cfg["car"]["direction_window_s"]    = pFloat("direction_window_s", 10.0);
+
+// ── Direction labels ──────────────────────────────────────────────────────
 $validRef = ["AB", "BA"];
 $ref = strtoupper(pStr("toward_ref", "AB"));
 $cfg["direction"]["toward_reference"] = in_array($ref, $validRef) ? $ref : "AB";

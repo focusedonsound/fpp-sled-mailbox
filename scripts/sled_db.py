@@ -43,6 +43,12 @@ KEY_LETTER_TOTAL    = "letter_total"
 KEY_DONATION_TOTAL  = "donation_total"
 KEY_TODAY_DATE      = "today_date"   # stored as "YYYY-MM-DD"
 
+# Event kind constants
+KIND_LETTER   = "letter"
+KIND_DONATION = "donation"
+KIND_CAR      = "car"
+KIND_PARKED   = "parked"    # car has been stationary > parked_timeout_s
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).astimezone().isoformat()

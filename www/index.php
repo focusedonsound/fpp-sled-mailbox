@@ -25,10 +25,24 @@ function defaultCfg() {
       "label_toward"     => "Inbound",
       "label_away"       => "Outbound",
     ],
-    "car"   => ["sequence_window_s" => 0.8, "cooldown_s" => 1.5],
+    "car"   => [
+      "sequence_window_s"  => 0.8,
+      "cooldown_s"         => 1.5,
+      "parked_timeout_s"   => 180,
+      "direction_window_s" => 10.0,
+    ],
     "mqtt"  => ["enabled" => false, "base" => "sled", "device_name" => "SLED Santa Mailbox"],
     "paths" => ["videos" => "/home/fpp/media/videos"],
   ];
+}
+
+// ── Serial port discovery ──────────────────────────────────────────────────
+function listSerialPorts() {
+  $ports = [];
+  foreach ((array)@glob('/dev/ttyUSB*') as $p) $ports[] = $p;
+  foreach ((array)@glob('/dev/ttyACM*') as $p) $ports[] = $p;
+  sort($ports);
+  return $ports;
 }
 
 function loadConfig($path) {
@@ -76,9 +90,10 @@ function listMedia() {
   return $out;
 }
 
-$cfg       = loadConfig($configFile);
-$running   = daemonRunning();
-$mediaFiles = listMedia();
+$cfg         = loadConfig($configFile);
+$running     = daemonRunning();
+$mediaFiles  = listMedia();
+$serialPorts = listSerialPorts();
 ?>
 
 <div class="d-flex justify-content-between align-items-center mb-2">
@@ -348,67 +363,254 @@ $mediaFiles = listMedia();
           <tr>
             <th colspan="4" style="padding:8px;">
               <i class="fas fa-fw fa-car"></i> Car Counter (HLK-LD2410B Radar)
-              <span class="text-muted fw-normal small ms-2">Optional &mdash; requires two USB radar sensors</span>
+              <span class="text-muted fw-normal small ms-2">Optional &mdash; requires two HLK-LD2410B sensors connected via USB</span>
             </th>
           </tr>
         </thead>
         <tbody>
+
+          <!-- Enable toggle + Radar Diagnostics button -->
           <tr>
             <td style="width:200px; padding:8px;">
               <label class="mb-0">Enable Car Counter</label>
+              <div class="text-muted small">Activates both radar sensors</div>
             </td>
-            <td colspan="3" style="padding:8px;">
+            <td style="padding:8px;">
               <div class="form-check form-switch">
                 <input class="form-check-input" type="checkbox" name="ld2410_enabled" id="ld2410Enabled"
                        value="1" <?php echo !empty($cfg['ld2410']['enabled']) ? 'checked' : ''; ?>
                        onchange="sledToggle('radarRows', this.checked)" />
               </div>
             </td>
+            <td colspan="2" style="padding:8px; text-align:right;">
+              <button type="button" class="buttons btn-outline-light btn-sm"
+                      onclick="sledRadarOpen()"
+                      title="Open the Radar Diagnostics panel to view live per-gate energy readings, tune sensitivity thresholds, and write settings directly to the radar hardware. Car counting on the selected radar is paused while the panel is open.">
+                <i class="fas fa-fw fa-radar"></i> Radar Diagnostics
+              </button>
+            </td>
           </tr>
+
+          <!-- Radar-dependent rows dimmed when disabled -->
           <tbody id="radarRows" style="<?php echo empty($cfg['ld2410']['enabled']) ? 'opacity:0.4;' : ''; ?>">
+
+          <!-- Sensor ports -->
           <tr>
             <td style="padding:8px;">
-              <label class="mb-0">Sensor A Port</label>
-              <div class="text-muted small">First beam (road-side)</div>
+              <label class="mb-0">
+                <i class="fas fa-fw fa-plug"></i> Sensor A Port
+              </label>
+              <div class="text-muted small">First beam — road-side (A→B = Inbound)</div>
             </td>
             <td style="padding:8px;">
-              <input type="text" class="form-control form-control-sm" name="ld2410_port_a"
-                     value="<?php echo htmlspecialchars($cfg['ld2410']['A']['port'] ?? '/dev/ttyUSB0'); ?>" />
+              <?php
+              $portA    = $cfg['ld2410']['A']['port'] ?? '/dev/ttyUSB0';
+              $foundA   = in_array($portA, $serialPorts);
+              $portsA   = $foundA ? $serialPorts : array_merge([$portA], $serialPorts);
+              ?>
+              <select name="ld2410_port_a" class="form-control form-control-sm"
+                      title="USB serial port for Radar A. On Raspberry Pi, LD2410 modules typically appear as /dev/ttyUSB0 or /dev/ttyUSB1. Plug in one at a time and note which device appears.">
+                <?php foreach ($portsA as $p): ?>
+                <option value="<?php echo htmlspecialchars($p); ?>"
+                  <?php echo ($portA === $p) ? 'selected' : ''; ?>>
+                  <?php echo htmlspecialchars($p); ?>
+                </option>
+                <?php endforeach; ?>
+                <?php if (empty($portsA)): ?>
+                <option value="<?php echo htmlspecialchars($portA); ?>" selected>
+                  <?php echo htmlspecialchars($portA); ?> (no ports detected)
+                </option>
+                <?php endif; ?>
+              </select>
             </td>
             <td style="padding:8px;">
-              <label class="mb-0">Sensor B Port</label>
+              <label class="mb-0">
+                <i class="fas fa-fw fa-plug"></i> Sensor B Port
+              </label>
+              <div class="text-muted small">Second beam — mailbox-side</div>
             </td>
             <td style="padding:8px;">
-              <input type="text" class="form-control form-control-sm" name="ld2410_port_b"
-                     value="<?php echo htmlspecialchars($cfg['ld2410']['B']['port'] ?? '/dev/ttyUSB1'); ?>" />
+              <?php
+              $portB    = $cfg['ld2410']['B']['port'] ?? '/dev/ttyUSB1';
+              $foundB   = in_array($portB, $serialPorts);
+              $portsB   = $foundB ? $serialPorts : array_merge([$portB], $serialPorts);
+              ?>
+              <select name="ld2410_port_b" class="form-control form-control-sm"
+                      title="USB serial port for Radar B. If both radars are plugged in simultaneously, USB0 and USB1 are assigned in order of detection — swap the physical USB cables if A and B are reversed.">
+                <?php foreach ($portsB as $p): ?>
+                <option value="<?php echo htmlspecialchars($p); ?>"
+                  <?php echo ($portB === $p) ? 'selected' : ''; ?>>
+                  <?php echo htmlspecialchars($p); ?>
+                </option>
+                <?php endforeach; ?>
+                <?php if (empty($portsB)): ?>
+                <option value="<?php echo htmlspecialchars($portB); ?>" selected>
+                  <?php echo htmlspecialchars($portB); ?> (no ports detected)
+                </option>
+                <?php endif; ?>
+              </select>
             </td>
           </tr>
+
+          <!-- Software min-energy thresholds -->
           <tr>
             <td style="padding:8px;">
-              <label class="mb-0">Direction Labels</label>
-              <div class="text-muted small">Inbound / Outbound names</div>
+              <label class="mb-0">
+                <i class="fas fa-fw fa-bolt"></i> Min Energy — A
+                <span style="cursor:help; color:var(--bs-info);" title="Software detection threshold for Radar A. The daemon checks max(moving_energy, stationary_energy) from the radar frame — if it is below this value the target is ignored, even if the hardware reports presence. Range: 1–100. Default: 20. Lower = more sensitive but more false triggers; raise if parked objects near the sensor cause false detections.">
+                  <i class="fas fa-circle-question fa-xs"></i>
+                </span>
+              </label>
+              <div class="text-muted small">Software presence filter (1–100)</div>
+            </td>
+            <td style="padding:8px;">
+              <div class="input-group input-group-sm" style="max-width:130px;">
+                <input type="number" class="form-control form-control-sm" name="ld2410_min_energy_a"
+                       min="1" max="100" step="1"
+                       value="<?php echo (int)($cfg['ld2410']['A']['min_energy'] ?? 20); ?>" />
+                <span class="input-group-text">/100</span>
+              </div>
+            </td>
+            <td style="padding:8px;">
+              <label class="mb-0">
+                <i class="fas fa-fw fa-bolt"></i> Min Energy — B
+                <span style="cursor:help; color:var(--bs-info);" title="Same as Min Energy A but applied to Radar B. Both radars can be tuned independently.">
+                  <i class="fas fa-circle-question fa-xs"></i>
+                </span>
+              </label>
+              <div class="text-muted small">Software presence filter (1–100)</div>
+            </td>
+            <td style="padding:8px;">
+              <div class="input-group input-group-sm" style="max-width:130px;">
+                <input type="number" class="form-control form-control-sm" name="ld2410_min_energy_b"
+                       min="1" max="100" step="1"
+                       value="<?php echo (int)($cfg['ld2410']['B']['min_energy'] ?? 20); ?>" />
+                <span class="input-group-text">/100</span>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Car timing -->
+          <tr>
+            <td style="padding:8px;">
+              <label class="mb-0">
+                <i class="fas fa-fw fa-stopwatch"></i> Sequence Window
+                <span style="cursor:help; color:var(--bs-info);" title="Maximum time (in seconds) between Radar A triggering and Radar B triggering for the pair to be counted as the same car passing. If the two triggers are more than this many seconds apart they are treated as separate events. Typical value: 0.5–2 s for a driveway.">
+                  <i class="fas fa-circle-question fa-xs"></i>
+                </span>
+              </label>
+              <div class="text-muted small">A→B pair window (seconds)</div>
+            </td>
+            <td style="padding:8px;">
+              <div class="input-group input-group-sm" style="max-width:130px;">
+                <input type="number" class="form-control form-control-sm" name="sequence_window_s"
+                       min="0.1" max="30" step="0.1"
+                       value="<?php echo number_format((float)($cfg['car']['sequence_window_s'] ?? 0.8), 1); ?>" />
+                <span class="input-group-text">sec</span>
+              </div>
+            </td>
+            <td style="padding:8px;">
+              <label class="mb-0">
+                <i class="fas fa-fw fa-clock-rotate-left"></i> Car Cooldown
+                <span style="cursor:help; color:var(--bs-info);" title="Minimum time between car-count triggers. Prevents the same slow-moving vehicle from being counted twice. Typical value: 1–3 s.">
+                  <i class="fas fa-circle-question fa-xs"></i>
+                </span>
+              </label>
+              <div class="text-muted small">Min time between car events</div>
+            </td>
+            <td style="padding:8px;">
+              <div class="input-group input-group-sm" style="max-width:130px;">
+                <input type="number" class="form-control form-control-sm" name="car_cooldown_s"
+                       min="0.5" max="30" step="0.5"
+                       value="<?php echo number_format((float)($cfg['car']['cooldown_s'] ?? 1.5), 1); ?>" />
+                <span class="input-group-text">sec</span>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Direction window + Parked car timeout -->
+          <tr>
+            <td style="padding:8px;">
+              <label class="mb-0">
+                <i class="fas fa-fw fa-arrows-left-right"></i> Direction Window
+                <span style="cursor:help; color:var(--bs-info);" title="How long (seconds) the system waits after the first radar trigger before deciding the car's direction. If the second radar fires within this window, direction (Inbound/Outbound) is determined. If only one radar fires, the car is counted as direction-unknown. Set longer than Sequence Window. Typical value: 5–15 s.">
+                  <i class="fas fa-circle-question fa-xs"></i>
+                </span>
+              </label>
+              <div class="text-muted small">Wait time for second radar (seconds)</div>
+            </td>
+            <td style="padding:8px;">
+              <div class="input-group input-group-sm" style="max-width:130px;">
+                <input type="number" class="form-control form-control-sm" name="direction_window_s"
+                       min="1" max="60" step="0.5"
+                       value="<?php echo number_format((float)($cfg['car']['direction_window_s'] ?? 10.0), 1); ?>" />
+                <span class="input-group-text">sec</span>
+              </div>
+            </td>
+            <td style="padding:8px;">
+              <label class="mb-0">
+                <i class="fas fa-fw fa-square-parking"></i> Parked Car Timeout
+                <span style="cursor:help; color:var(--bs-info);" title="If a radar reports continuous presence for longer than this many seconds, the car is assumed to be parked. Further car-count triggers from that radar are suppressed until the car leaves. The parked event is logged in the database. Typical value: 120–300 s (2–5 minutes).">
+                  <i class="fas fa-circle-question fa-xs"></i>
+                </span>
+              </label>
+              <div class="text-muted small">Suppress counting after this long</div>
+            </td>
+            <td style="padding:8px;">
+              <div class="input-group input-group-sm" style="max-width:130px;">
+                <input type="number" class="form-control form-control-sm" name="parked_timeout_s"
+                       min="10" max="3600" step="10"
+                       value="<?php echo (int)($cfg['car']['parked_timeout_s'] ?? 180); ?>" />
+                <span class="input-group-text">sec</span>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Direction labels + Toward reference -->
+          <tr>
+            <td style="padding:8px;">
+              <label class="mb-0">
+                <i class="fas fa-fw fa-signs-post"></i> Direction Labels
+                <span style="cursor:help; color:var(--bs-info);" title="Custom names for the two traffic directions. These labels appear in the Analytics dashboard and MQTT messages.">
+                  <i class="fas fa-circle-question fa-xs"></i>
+                </span>
+              </label>
+              <div class="text-muted small">Toward / Away display names</div>
             </td>
             <td style="padding:8px;">
               <div class="d-flex gap-2">
                 <input type="text" class="form-control form-control-sm" name="label_toward"
                        placeholder="Inbound"
+                       title="Label for traffic moving toward the mailbox (e.g. Inbound, Arriving, To Mailbox)"
                        value="<?php echo htmlspecialchars($cfg['direction']['label_toward'] ?? 'Inbound'); ?>" />
                 <input type="text" class="form-control form-control-sm" name="label_away"
                        placeholder="Outbound"
+                       title="Label for traffic moving away from the mailbox (e.g. Outbound, Departing, From Mailbox)"
                        value="<?php echo htmlspecialchars($cfg['direction']['label_away'] ?? 'Outbound'); ?>" />
               </div>
             </td>
             <td style="padding:8px;">
-              <label class="mb-0">Toward Reference</label>
+              <label class="mb-0">
+                <i class="fas fa-fw fa-compass"></i> Toward Reference
+                <span style="cursor:help; color:var(--bs-info);" title="Which sensor fires first when a car is traveling toward the mailbox. AB = Radar A fires before Radar B (car approaches from the road past A then B). BA = the reverse. Physically: stand at the mailbox facing the road — if the nearest sensor is A, use AB.">
+                  <i class="fas fa-circle-question fa-xs"></i>
+                </span>
+              </label>
             </td>
             <td style="padding:8px;">
-              <select name="toward_ref" class="form-control form-control-sm">
-                <option value="AB" <?php echo ($cfg['direction']['toward_reference'] ?? 'AB') === 'AB' ? 'selected' : ''; ?>>AB (A fires first)</option>
-                <option value="BA" <?php echo ($cfg['direction']['toward_reference'] ?? 'AB') === 'BA' ? 'selected' : ''; ?>>BA (B fires first)</option>
+              <select name="toward_ref" class="form-control form-control-sm"
+                      title="Which radar fires first for Inbound traffic.">
+                <option value="AB" <?php echo ($cfg['direction']['toward_reference'] ?? 'AB') === 'AB' ? 'selected' : ''; ?>>
+                  AB &mdash; A fires first (Inbound)
+                </option>
+                <option value="BA" <?php echo ($cfg['direction']['toward_reference'] ?? 'AB') === 'BA' ? 'selected' : ''; ?>>
+                  BA &mdash; B fires first (Inbound)
+                </option>
               </select>
             </td>
           </tr>
-          </tbody>
+
+          </tbody><!-- end radarRows -->
         </tbody>
       </table>
     </div>
@@ -465,6 +667,8 @@ $mediaFiles = listMedia();
     </table>
   </div>
 </div>
+
+<?php include __DIR__ . '/radar_diag.php'; ?>
 
 <script>
 const SLED_BASE = (typeof pluginBase !== 'undefined' && pluginBase)

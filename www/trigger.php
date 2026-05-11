@@ -41,6 +41,37 @@ switch ($action) {
     @exec("bash " . escapeshellarg($callbacks) . " pluginStart > /dev/null 2>&1 &");
     respond(true, "Daemon restart initiated.");
 
+  // ── Radar diagnostic mode ──────────────────────────────────────────────
+  case 'diag_start_a':
+    if (@file_put_contents($cmdQueue, "diag_start_a\n") === false)
+      respond(false, "Failed to write command queue");
+    respond(true, "Diagnostic mode start queued for Radar A.");
+
+  case 'diag_start_b':
+    if (@file_put_contents($cmdQueue, "diag_start_b\n") === false)
+      respond(false, "Failed to write command queue");
+    respond(true, "Diagnostic mode start queued for Radar B.");
+
+  case 'diag_stop':
+    if (@file_put_contents($cmdQueue, "diag_stop\n") === false)
+      respond(false, "Failed to write command queue");
+    respond(true, "Diagnostic mode stop queued.");
+
+  case 'diag_set_a':
+  case 'diag_set_b': {
+    $data = trim((string)($_GET['data'] ?? $_POST['data'] ?? ''));
+    if ($data === '') respond(false, "No config data provided");
+    $parsed = json_decode($data, true);
+    if (!is_array($parsed)) respond(false, "Invalid JSON config data");
+    // Sanitise and re-encode to prevent injection via the cmd line
+    $safe = json_encode($parsed, JSON_UNESCAPED_SLASHES);
+    $line = $action . ':' . $safe . "\n";
+    if (@file_put_contents($cmdQueue, $line) === false)
+      respond(false, "Failed to write command queue");
+    $side = ($action === 'diag_set_a') ? 'A' : 'B';
+    respond(true, "Radar $side config write queued.");
+  }
+
   default:
     respond(false, "Unknown action: " . htmlspecialchars($action));
 }
