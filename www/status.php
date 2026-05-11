@@ -188,6 +188,16 @@ $labelOut   = htmlspecialchars($cfg['direction']['label_away']   ?? 'Outbound');
   </div>
 </div>
 
+<!-- ── Dev Tools footer ──────────────────────────────────────────────────────── -->
+<div class="text-end mb-3">
+  <a href="<?php
+      $base = 'plugin.php?plugin=fpp-sled-mailbox&page=www/seed.php';
+      echo htmlspecialchars($base);
+  ?>" class="text-muted small">
+    <i class="fas fa-fw fa-flask"></i> Dev Tools &mdash; Sample Data
+  </a>
+</div>
+
 <!-- ── JavaScript ────────────────────────────────────────────────────────────── -->
 <script>
 // ── URL helpers ───────────────────────────────────────────────────────────────
