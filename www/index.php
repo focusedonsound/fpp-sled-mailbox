@@ -59,7 +59,6 @@ function daemonRunning() {
 function listMedia() {
   $dirs = [
     "/home/fpp/media/videos",
-    "/home/fpp/media/music",
   ];
   $out = [];
   foreach ($dirs as $d) {
@@ -67,7 +66,7 @@ function listMedia() {
     $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($d));
     foreach ($it as $f) {
       if ($f->isDir()) continue;
-      if (preg_match('/\.(mp4|mkv|avi|mov|wmv|flv|webm|mp3|wav|ogg|flac|m4a)$/i', $f->getPathname())) {
+      if (preg_match('/\.(mp4|mkv|avi|mov|wmv|flv|webm)$/i', $f->getPathname())) {
         $rel = str_replace(["/home/fpp/media/videos/", "/home/fpp/media/music/"], "", $f->getPathname());
         $out[] = $rel;
       }
@@ -129,8 +128,8 @@ $mediaFiles = listMedia();
           <!-- Idle Video -->
           <tr>
             <td style="width:220px; padding:8px;">
-              <label class="mb-0"><i class="fas fa-fw fa-rotate"></i> Idle Loop</label>
-              <div class="text-muted small">Loops while display is active</div>
+              <label class="mb-0"><i class="fas fa-fw fa-rotate"></i> Idle Loop (Screen Saver)</label>
+              <div class="text-muted small">Loops continuously during the active schedule window</div>
             </td>
             <td style="padding:8px;">
               <select name="video_idle" class="form-control form-control-sm">
@@ -315,7 +314,7 @@ $mediaFiles = listMedia();
           <tr>
             <th colspan="4" style="padding:8px;">
               <i class="fas fa-fw fa-clock"></i> Idle Schedule
-              <span class="text-muted fw-normal small ms-2">Hours when the idle loop runs &mdash; events play outside this window too</span>
+              <span class="text-muted fw-normal small ms-2">Screen Saver active window &mdash; events will play outside this window too. Screen will be blank prior to event (energy saver mode)</span>
             </th>
           </tr>
         </thead>
