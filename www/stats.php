@@ -3,6 +3,10 @@
 // GET params:
 //   days   = integer 7–365 (default 30)
 //   period = "day" | "week" | "month" (default "day")
+//
+// ob_start() must come first: FPP's config.php (included before us by plugin.php)
+// can emit whitespace that would corrupt the JSON if not buffered away.
+ob_start();
 ini_set('display_errors', '0');
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
@@ -204,4 +208,6 @@ try {
     $out['error'] = $e->getMessage();
 }
 
-echo json_encode($out);
+$json = json_encode($out);
+ob_end_clean();   // discard any stray output (PHP notices, FPP config.php whitespace, etc.)
+echo $json;

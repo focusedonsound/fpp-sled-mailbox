@@ -26,8 +26,9 @@ $labelIn    = htmlspecialchars($cfg['direction']['label_toward'] ?? 'Inbound');
 $labelOut   = htmlspecialchars($cfg['direction']['label_away']   ?? 'Outbound');
 ?>
 
-<!-- Chart.js (requires network on first load; cached after) -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<!-- Chart.js — local copy installed by fpp_install.sh; CDN fallback if not yet present -->
+<script src="plugin.php?plugin=fpp-sled-mailbox&file=js/chart.umd.min.js&nopage=1"
+        onerror="var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js';document.head.appendChild(s);console.warn('[SLED] Local Chart.js missing, falling back to CDN');"></script>
 
 <!-- ── Page Header ──────────────────────────────────────────────────────────── -->
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
@@ -396,15 +397,47 @@ function sledApplyData(data) {
   if (el) el.textContent = 'Updated ' + (data.refresh_ts || new Date().toLocaleTimeString());
 }
 
+// ── Error display ─────────────────────────────────────────────────────────────
+function sledShowFetchError(msg) {
+  const ts = document.getElementById('sledLastRefresh');
+  if (ts) ts.textContent = '⚠ ' + msg;
+  // Show message inside chart area so it's impossible to miss
+  const mailWrap = document.getElementById('sledMailChart')?.parentElement;
+  if (mailWrap && !mailWrap.querySelector('.sled-fetch-error')) {
+    mailWrap.insertAdjacentHTML('afterbegin',
+      `<div class="sled-fetch-error text-warning p-2 small border-bottom mb-2">
+         <i class="fas fa-fw fa-triangle-exclamation"></i>
+         <strong>Stats fetch failed:</strong> ${msg}
+         &mdash; Check browser console (F12) for details.
+       </div>`);
+  }
+  document.getElementById('sledFeed').innerHTML =
+    `<div class="text-warning p-3 text-center small"><i class="fas fa-fw fa-triangle-exclamation"></i> ${msg}</div>`;
+}
+
 // ── Fetch ─────────────────────────────────────────────────────────────────────
 async function sledRefreshNow() {
   clearTimeout(sledTimer);
+  // Clear previous error banners
+  document.querySelectorAll('.sled-fetch-error').forEach(el => el.remove());
   try {
-    const qs  = `days=${sledRange.days}&period=${sledRange.period}`;
-    const res = await fetch(sledUrl('stats.php', qs), { cache: 'no-store' });
-    sledApplyData(await res.json());
+    const qs   = `days=${sledRange.days}&period=${sledRange.period}`;
+    const url  = sledUrl('stats.php', qs);
+    const res  = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status} from stats.php`);
+    const text = await res.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch(je) {
+      // Show first 120 chars of the bad response to help diagnose
+      throw new Error(`stats.php returned non-JSON: "${text.slice(0, 120).replace(/</g,'&lt;')}"`);
+    }
+    if (data.error) throw new Error('stats.php DB error: ' + data.error);
+    sledApplyData(data);
   } catch(e) {
-    console.warn('[SLED] Stats fetch failed:', e);
+    console.error('[SLED] Stats fetch failed:', e);
+    sledShowFetchError(e.message);
   }
   sledScheduleNext();
 }
