@@ -46,7 +46,7 @@ function seed_open_rw($dbPath) {
     $db = new SQLite3($dbPath, SQLITE3_OPEN_READWRITE | SQLITE3_OPEN_CREATE);
     $db->busyTimeout(3000);
     $db->exec("PRAGMA journal_mode=WAL");
-    $db->executescript(SEED_DDL);
+    $db->exec(SEED_DDL);
     return $db;
 }
 
@@ -79,7 +79,7 @@ function seed_count($dbPath) {
         $n = (int)($db->querySingle("SELECT COUNT(*) FROM events WHERE json_extract(data,'$.seeded')=1") ?? 0);
         $db->close();
         return $n;
-    } catch (Exception $e) { return 0; }
+    } catch (\Throwable $e) { return 0; }
 }
 
 function seed_real_count($dbPath) {
@@ -89,7 +89,7 @@ function seed_real_count($dbPath) {
         $n = (int)($db->querySingle("SELECT COUNT(*) FROM events WHERE json_extract(data,'$.seeded') IS NULL OR json_extract(data,'$.seeded')!=1") ?? 0);
         $db->close();
         return $n;
-    } catch (Exception $e) { return 0; }
+    } catch (\Throwable $e) { return 0; }
 }
 
 // ── POST handlers ─────────────────────────────────────────────────────────────
@@ -220,7 +220,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             echo json_encode(['status' => 'ERROR', 'message' => 'Unknown action']);
         }
 
-    } catch (Exception $e) {
+    } catch (\Throwable $e) {
         echo json_encode(['status' => 'ERROR', 'message' => $e->getMessage()]);
     }
     exit;
