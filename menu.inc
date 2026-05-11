@@ -15,6 +15,12 @@ $menuEntries = Array(
 		'type' => 'status',
 		'page' => 'www/status.php',
 		'wrap' => 1
+	),
+	Array(
+		'text' => 'SLED MQTT',
+		'type' => 'content',
+		'page' => 'www/mqtt.php',
+		'wrap' => 1
 	)
 );
 

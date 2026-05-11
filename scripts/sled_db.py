@@ -169,6 +169,17 @@ class SledDB:
             for r in rows
         ]
 
+    def get_today_count(self, kind: str) -> int:
+        """Count events of a given kind recorded today (Pi local date)."""
+        today = _today_str()
+        cur = self._cur()
+        cur.execute(
+            "SELECT COUNT(*) FROM events WHERE kind=? AND substr(ts,1,10)=?",
+            (kind, today),
+        )
+        row = cur.fetchone()
+        return int(row[0]) if row else 0
+
     def today_events(self, kind: Optional[str] = None) -> List[Dict[str, Any]]:
         today = _today_str()
         cur = self._cur()

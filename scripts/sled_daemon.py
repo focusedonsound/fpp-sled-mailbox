@@ -248,6 +248,12 @@ def main() -> None:
     ha.set_letter_total(snap["letter_total"])
     ha.set_donation_total(snap["donation_total"])
 
+    # Today's letter / donation counts (derived from events table — accurate across restarts)
+    letter_today_count:   int = db.get_today_count("letter")
+    donation_today_count: int = db.get_today_count("donation")
+    ha.set_letter_today(letter_today_count)
+    ha.set_donation_today(donation_today_count)
+
     # Sensors
     debug_cfg = cfg.get("debug", {})
     use_mock  = bool(debug_cfg.get("use_mock_inputs", False))
@@ -296,9 +302,13 @@ def main() -> None:
             # Midnight reset
             if db.check_midnight_reset():
                 log.info("Midnight reset: today counters cleared")
+                letter_today_count   = 0
+                donation_today_count = 0
                 ha.set_car_today(0)
                 ha.set_inbound_today(0)
                 ha.set_outbound_today(0)
+                ha.set_letter_today(0)
+                ha.set_donation_today(0)
 
             # Schedule tick (every ~5 s)
             if now_ts - last_sched_check >= 5.0:
@@ -325,6 +335,9 @@ def main() -> None:
                 log.info("[CmdQueue] STOP received — shutting down")
                 _shutdown.set()
                 break
+            elif queued == "cleanup":
+                log.info("[CmdQueue] CLEANUP — removing HA discovery entities")
+                ha.remove_discovery()
 
             # Poll hardware / mock inputs
             ev = ins.get_event(timeout=0.1)
@@ -356,7 +369,9 @@ def main() -> None:
                 ha.event("letter", {"clip": clip, "ts": now_iso})
 
                 lt = db.increment_counter("letter_total")
+                letter_today_count += 1
                 ha.set_letter_total(lt)
+                ha.set_letter_today(letter_today_count)
                 db.log_event("letter", {"clip": clip})
 
                 if in_window(cfg):
@@ -392,7 +407,9 @@ def main() -> None:
                 ha.event("donation", {"clip": clip, "ts": now_iso})
 
                 dt_ = db.increment_counter("donation_total")
+                donation_today_count += 1
                 ha.set_donation_total(dt_)
+                ha.set_donation_today(donation_today_count)
                 db.log_event("donation", {"clip": clip})
 
                 if in_window(cfg):
