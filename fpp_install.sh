@@ -110,19 +110,8 @@ if [[ ! -f "$CONFIG" ]]; then
 JSONEOF
 fi
 
-# ── Chart.js (local copy for analytics dashboard) ───────────────
-# Served via FPP's file= mechanism so the dashboard works offline.
-CHARTJS_DIR="${PLUGIN_DIR}/js"
-CHARTJS_FILE="${CHARTJS_DIR}/chart.umd.min.js"
-mkdir -p "$CHARTJS_DIR"
-if [[ ! -f "$CHARTJS_FILE" ]]; then
-    log "Downloading Chart.js for analytics dashboard..."
-    wget -q --timeout=30 \
-        "https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" \
-        -O "$CHARTJS_FILE" >> "$LOGFILE" 2>&1 \
-        && log "Chart.js downloaded OK" \
-        || { log "WARN: Chart.js download failed — dashboard will use CDN fallback"; rm -f "$CHARTJS_FILE"; }
-fi
+# ── Chart.js (bundled in repo under js/) ────────────────────────
+# chart.umd.min.js is committed to git — no download needed.
 
 log "=== SLED Santa Mailbox install complete ==="
 exit 0

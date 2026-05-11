@@ -28,7 +28,7 @@ $labelOut   = htmlspecialchars($cfg['direction']['label_away']   ?? 'Outbound');
 
 <!-- Chart.js — local copy installed by fpp_install.sh; CDN fallback if not yet present -->
 <script src="plugin.php?plugin=fpp-sled-mailbox&file=js/chart.umd.min.js&nopage=1"
-        onerror="var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js';document.head.appendChild(s);console.warn('[SLED] Local Chart.js missing, falling back to CDN');"></script>
+        onerror="console.error('[SLED] chart.umd.min.js not found — run plugin update to restore it.');"></script>
 
 <!-- ── Page Header ──────────────────────────────────────────────────────────── -->
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
