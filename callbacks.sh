@@ -90,6 +90,20 @@ case "${1:-}" in
     pluginStop)
         daemon_stop
         ;;
+    getLinks)
+        # Register this plugin in FPP's Content Setup navigation menu.
+        # FPP calls this callback to discover plugin navigation entries.
+        cat <<'JSON'
+[
+  {
+    "menu": "content",
+    "text": "SLED Smart Letters",
+    "url":  "/plugin.php?plugin=fpp-sled-mailbox&page=www/index.php",
+    "icon": "fas fa-fw fa-envelope-open-text"
+  }
+]
+JSON
+        ;;
     *)
         # FPP may call other hooks; ignore them silently
         exit 0
