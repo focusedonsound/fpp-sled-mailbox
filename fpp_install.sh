@@ -20,10 +20,12 @@ apt-get install -y --no-install-recommends \
 
 # ── Optional: Adafruit DHT support ────────────────────────────────
 # Only install if pip3 is available; not strictly required.
+# Uses --break-system-packages for Ubuntu 24.04+ (PEP 668).
 if command -v pip3 >/dev/null 2>&1; then
     log "Installing optional Adafruit DHT library..."
-    pip3 install --quiet adafruit-circuitpython-dht >> "$LOGFILE" 2>&1 \
-        || log "WARN: adafruit-dht install failed — DHT11 sensor disabled"
+    pip3 install --quiet --break-system-packages adafruit-circuitpython-dht >> "$LOGFILE" 2>&1 \
+        || pip3 install --quiet adafruit-circuitpython-dht >> "$LOGFILE" 2>&1 \
+        || log "WARN: adafruit-dht install failed — DHT11 sensor disabled (non-fatal)"
 fi
 
 # ── Make scripts executable ──────────────────────────────────────
@@ -109,3 +111,4 @@ JSONEOF
 fi
 
 log "=== SLED Santa Mailbox install complete ==="
+exit 0

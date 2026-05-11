@@ -1,18 +1,29 @@
 {
-  "name": "fpp-sled-mailbox",
-  "longName": "SLED Santa Mailbox",
-  "description": "Santa's Letter Express Delivery — sensor-driven video playback, car counting, and Home Assistant integration for interactive Santa Mailbox displays.",
-  "author": "Nick Scilingo",
-  "homepage": "https://github.com/focusedonsound/fpp-sled-mailbox",
-  "category": "GPIO/Sensors",
+  "repoName": "fpp-sled-mailbox",
+  "name": "SLED Smart Letters to Santa",
+  "author": "Nick Scilingo Nick S(NJ)",
+  "description": "SLED (Smart Letters Express Delivery) — sensor-driven video playback, car counting, and Home Assistant integration for interactive Santa Mailbox displays. Supports GPIO letter/donation sensors, HLK-LD2410B radar car detection, MQTT/HA discovery, and SQLite-backed analytics dashboard.",
+  "homeURL": "https://github.com/focusedonsound/fpp-sled-mailbox",
+  "srcURL": "https://github.com/focusedonsound/fpp-sled-mailbox.git",
+  "bugURL": "https://github.com/focusedonsound/fpp-sled-mailbox/issues",
+  "allowUpdates": 1,
   "versions": [
     {
-      "minFPPVersion": "10.0",
+      "minFPPVersion": "8.0",
+      "maxFPPVersion": "8.99",
+      "branch": "main",
+      "sha": "",
+      "dependencies": {
+        "packages": ["python3-serial", "python3-paho-mqtt", "mpv", "python3-gpiozero"]
+      }
+    },
+    {
+      "minFPPVersion": "9.0",
       "maxFPPVersion": "0",
       "branch": "main",
       "sha": "",
       "dependencies": {
-        "packages": ["python3-serial", "python3-paho-mqtt", "mpv"]
+        "packages": ["python3-serial", "python3-paho-mqtt", "mpv", "python3-gpiozero"]
       }
     }
   ]
