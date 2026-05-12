@@ -114,8 +114,6 @@ class SledDB:
         If the stored date differs from today, reset all *_today counters.
         Returns True if a reset was performed.
         """
-        stored = self.get_counter(KEY_TODAY_DATE, 0)  # type: ignore[arg-type]
-        # stored_date via raw query
         assert self._con
         cur = self._cur()
         cur.execute("SELECT value FROM counters WHERE key=?", (KEY_TODAY_DATE,))
