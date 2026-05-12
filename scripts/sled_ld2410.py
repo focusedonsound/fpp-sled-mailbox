@@ -169,6 +169,21 @@ def _pack_cfg_frame(cmd: int, params: bytes = b"") -> bytes:
     return HDR_CFG + struct.pack("<H", len(payload)) + payload + FTR_CFG
 
 
+def _cfg_ack(rsp: Optional[bytes]) -> bool:
+    """
+    Return True if the response payload carries a success ACK.
+    Status bytes are at rsp[2:4] and should be 0x00 0x00.
+    Mask bit-7 on each byte to tolerate USB-serial parity corruption
+    (same adapter issue that corrupts the length field).
+    """
+    return (
+        rsp is not None
+        and len(rsp) >= 4
+        and (rsp[2] & 0x7F) == 0
+        and (rsp[3] & 0x7F) == 0
+    )
+
+
 def _read_cfg_response(ser, timeout: float = 0.5) -> Optional[bytes]:
     """
     Read one config-mode response frame from the serial port.
@@ -202,9 +217,12 @@ def _read_cfg_response(ser, timeout: float = 0.5) -> Optional[bytes]:
         if len(buf) < 6:
             continue
 
-        data_len = _u16le(buf, 4)
+        # Strip bit-7 from each length byte to compensate for USB-serial parity
+        # corruption observed on some CH340/CP2102 adapters with LD2410B.
+        # e.g. "08 80" and "88 00" both represent length 8 after masking.
+        data_len = (buf[4] & 0x7F) | ((buf[5] & 0x7F) << 8)
         if data_len > 256:
-            # Implausibly large — not a real cfg frame; skip this header
+            # Still implausibly large — skip this header
             del buf[:4]
             continue
 
@@ -245,7 +263,7 @@ def ld2410_enter_config(ser) -> bool:
         ser.write(_pack_cfg_frame(0x00FF, b"\x01\x00"))
         ser.flush()
         rsp = _read_cfg_response(ser, timeout=1.5)
-        if rsp is not None and len(rsp) >= 4 and rsp[2:4] == b"\x00\x00":
+        if _cfg_ack(rsp):
             return True
         time.sleep(0.2)
         try:
@@ -260,7 +278,7 @@ def ld2410_exit_config(ser) -> bool:
     frame = _pack_cfg_frame(0x00FE)
     ser.write(frame)
     rsp = _read_cfg_response(ser)
-    return rsp is not None and len(rsp) >= 4 and rsp[2:4] == b"\x00\x00"
+    return _cfg_ack(rsp)
 
 
 def ld2410_enable_eng(ser) -> bool:
@@ -270,14 +288,14 @@ def ld2410_enable_eng(ser) -> bool:
     """
     ser.write(_pack_cfg_frame(0x0062))
     rsp = _read_cfg_response(ser)
-    return rsp is not None and len(rsp) >= 4 and rsp[2:4] == b"\x00\x00"
+    return _cfg_ack(rsp)
 
 
 def ld2410_disable_eng(ser) -> bool:
     """Disable engineering mode. Radar must be in config mode first."""
     ser.write(_pack_cfg_frame(0x0063))
     rsp = _read_cfg_response(ser)
-    return rsp is not None and len(rsp) >= 4 and rsp[2:4] == b"\x00\x00"
+    return _cfg_ack(rsp)
 
 
 def ld2410_read_config(ser) -> Optional[Ld2410Config]:
@@ -328,7 +346,7 @@ def ld2410_write_config(ser, cfg: Ld2410Config) -> bool:
     )
     ser.write(_pack_cfg_frame(0x0060, params))
     rsp = _read_cfg_response(ser)
-    if rsp is None or len(rsp) < 4 or rsp[2:4] != b"\x00\x00":
+    if not _cfg_ack(rsp):
         return False
 
     # 2 — per-gate sensitivities
@@ -338,7 +356,7 @@ def ld2410_write_config(ser, cfg: Ld2410Config) -> bool:
         params = struct.pack("<III", gate, move_s, static_s)
         ser.write(_pack_cfg_frame(0x0064, params))
         rsp = _read_cfg_response(ser)
-        if rsp is None or len(rsp) < 4 or rsp[2:4] != b"\x00\x00":
+        if not _cfg_ack(rsp):
             return False
 
     return True
