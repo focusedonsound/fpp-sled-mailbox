@@ -199,6 +199,9 @@ def _read_cfg_response(ser, timeout: float = 0.5) -> Optional[bytes]:
         # body: [len u16le] [cmd+1 u16le] [status u16le] [data...]
         data_len = _u16le(body, 0)
         return body[2:2 + data_len]
+    # Timeout — log first 32 bytes of what was received for debugging
+    if buf:
+        print(f"[LD2410] cfg_response timeout, buf={buf[:32].hex()}", flush=True)
     return None
 
 
@@ -212,10 +215,28 @@ def ld2410_enter_config(ser) -> bool:
     Must be called before any set/get config commands.
     Returns True on ACK.
     """
-    frame = _pack_cfg_frame(0x00FF, b"\x01\x00")
-    ser.write(frame)
-    rsp = _read_cfg_response(ser, timeout=1.5)  # generous: buffer flush precedes call
-    return rsp is not None and len(rsp) >= 4 and rsp[2:4] == b"\x00\x00"
+    # Send exit-config first to ensure a known state (idempotent if not in cfg mode).
+    ser.write(_pack_cfg_frame(0x00FE))
+    ser.flush()
+    time.sleep(0.05)
+    try:
+        ser.reset_input_buffer()
+    except Exception:
+        pass
+
+    # Now request config mode (up to 3 attempts).
+    for attempt in range(3):
+        ser.write(_pack_cfg_frame(0x00FF, b"\x01\x00"))
+        ser.flush()
+        rsp = _read_cfg_response(ser, timeout=1.5)
+        if rsp is not None and len(rsp) >= 4 and rsp[2:4] == b"\x00\x00":
+            return True
+        time.sleep(0.2)
+        try:
+            ser.reset_input_buffer()
+        except Exception:
+            pass
+    return False
 
 
 def ld2410_exit_config(ser) -> bool:
