@@ -44,6 +44,14 @@ fi
 VENDOR_DIR="${PLUGIN_DIR}/scripts/vendor"
 mkdir -p "$VENDOR_DIR"
 
+# Bootstrap pip if not available
+if ! python3 -m pip --version >/dev/null 2>&1; then
+    log "pip not available — bootstrapping via ensurepip..."
+    python3 -m ensurepip --upgrade >> "$LOGFILE" 2>&1 \
+        && log "ensurepip OK" \
+        || log "WARN: ensurepip failed"
+fi
+
 install_pip_pkg() {
     local pkg="$1"
     local import_name="$2"

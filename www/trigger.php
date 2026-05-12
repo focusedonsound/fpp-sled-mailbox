@@ -57,6 +57,13 @@ switch ($action) {
     $pluginDir2 = realpath(dirname(__FILE__) . "/../");
     $vendor = $pluginDir2 . "/scripts/vendor";
     @mkdir($vendor, 0755, true);
+
+    // Bootstrap pip via ensurepip if python3 -m pip isn't available yet
+    $pipCheck = trim(shell_exec('python3 -m pip --version 2>&1') ?: '');
+    if (strpos($pipCheck, 'pip') === false) {
+      shell_exec('python3 -m ensurepip --upgrade 2>&1');
+    }
+
     $out = [];
     foreach (["pyserial:serial", "paho-mqtt:paho"] as $spec) {
       [$pkg, $mod] = explode(":", $spec);
