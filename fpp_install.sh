@@ -3,24 +3,62 @@
 # Called by FPP when the plugin is installed or updated.
 
 PLUGIN_DIR="$(dirname "$0")"
-LOGFILE="/home/fpp/media/logs/SledMailbox_install.log"
 
-log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOGFILE"; }
+# Log to /tmp first (always writable), then also try the media logs dir
+LOGFILE="/tmp/SledMailbox_install.log"
+MEDIA_LOG="/home/fpp/media/logs/SledMailbox_install.log"
 
-log "=== SLED Santa Mailbox install started ==="
+log() {
+    local msg="[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+    echo "$msg" | tee -a "$LOGFILE"
+    echo "$msg" >> "$MEDIA_LOG" 2>/dev/null || true
+}
+
+log "=== SLED Santa Mailbox install started (user=$(whoami), uid=$(id -u)) ==="
+
+# ── Create media directories ─────────────────────────────────────
+# Do this FIRST so the media log path is available.
+mkdir -p /home/fpp/media/logs
+mkdir -p /home/fpp/media/config
+mkdir -p /home/fpp/media/plugins/fpp-sled-mailbox/videos
+
+# Now that the dir exists, copy /tmp log into media log
+cat "$LOGFILE" >> "$MEDIA_LOG" 2>/dev/null || true
 
 # ── System packages ──────────────────────────────────────────────
-log "Installing system packages..."
-apt-get install -y --no-install-recommends \
+log "Installing system packages via apt-get..."
+if apt-get install -y --no-install-recommends \
     mpv \
     python3-serial \
     python3-paho-mqtt \
     python3-gpiozero \
-    >> "$LOGFILE" 2>&1 || log "WARN: some apt packages may have failed (non-fatal)"
+    >> "$LOGFILE" 2>&1; then
+    log "apt-get packages installed OK"
+else
+    log "WARN: apt-get failed or partial — will try pip3 fallbacks"
+fi
+
+# ── pip3 fallbacks for critical packages ────────────────────────
+# pyserial is required for radar; install via pip3 if apt failed.
+if ! python3 -c "import serial" 2>/dev/null; then
+    log "pyserial not found — installing via pip3..."
+    pip3 install --quiet --break-system-packages pyserial >> "$LOGFILE" 2>&1 \
+        || pip3 install --quiet pyserial >> "$LOGFILE" 2>&1 \
+        || log "WARN: pip3 pyserial install also failed — radar will be disabled"
+else
+    log "pyserial already available"
+fi
+
+if ! python3 -c "import paho.mqtt.client" 2>/dev/null; then
+    log "paho-mqtt not found — installing via pip3..."
+    pip3 install --quiet --break-system-packages paho-mqtt >> "$LOGFILE" 2>&1 \
+        || pip3 install --quiet paho-mqtt >> "$LOGFILE" 2>&1 \
+        || log "WARN: pip3 paho-mqtt install failed — MQTT will be disabled"
+else
+    log "paho-mqtt already available"
+fi
 
 # ── Optional: Adafruit DHT support ────────────────────────────────
-# Only install if pip3 is available; not strictly required.
-# Uses --break-system-packages for Ubuntu 24.04+ (PEP 668).
 if command -v pip3 >/dev/null 2>&1; then
     log "Installing optional Adafruit DHT library..."
     pip3 install --quiet --break-system-packages adafruit-circuitpython-dht >> "$LOGFILE" 2>&1 \
@@ -36,12 +74,6 @@ chmod +x "${PLUGIN_DIR}/commands/"*.sh 2>/dev/null || true
 chmod +x "${PLUGIN_DIR}/callbacks.sh"  2>/dev/null || true
 chmod +x "${PLUGIN_DIR}/fpp_start.sh"  2>/dev/null || true
 chmod +x "${PLUGIN_DIR}/fpp_stop.sh"   2>/dev/null || true
-
-# ── Create media directories ─────────────────────────────────────
-log "Creating media directories..."
-mkdir -p /home/fpp/media/logs
-mkdir -p /home/fpp/media/config
-mkdir -p /home/fpp/media/plugins/fpp-sled-mailbox/videos
 
 # ── Write default config if none exists ─────────────────────────
 CONFIG="/home/fpp/media/config/sled.json"
@@ -123,13 +155,15 @@ SERVICE_DST="/etc/systemd/system/sled-mailbox.service"
 
 if [[ -f "$SERVICE_SRC" ]]; then
     log "Installing systemd service..."
-    cp "$SERVICE_SRC" "$SERVICE_DST"
-    systemctl daemon-reload >> "$LOGFILE" 2>&1 || true
-    systemctl enable sled-mailbox >> "$LOGFILE" 2>&1 || true
+    cp "$SERVICE_SRC" "$SERVICE_DST" && log "Service file copied OK" || log "WARN: could not copy service file"
+    systemctl daemon-reload >> "$LOGFILE" 2>&1 && log "systemctl daemon-reload OK" || log "WARN: daemon-reload failed"
+    systemctl enable sled-mailbox >> "$LOGFILE" 2>&1 && log "sled-mailbox enabled OK" || log "WARN: enable failed"
     # Start (or restart if already running) the daemon immediately
-    systemctl restart sled-mailbox >> "$LOGFILE" 2>&1 && \
-        log "sled-mailbox service started" || \
-        log "WARN: could not start sled-mailbox service (may need reboot)"
+    if systemctl restart sled-mailbox >> "$LOGFILE" 2>&1; then
+        log "sled-mailbox service started OK"
+    else
+        log "WARN: could not start sled-mailbox service (non-fatal — daemon can be started manually)"
+    fi
 else
     log "WARN: sled-mailbox.service not found in plugin dir — skipping systemd install"
 fi
