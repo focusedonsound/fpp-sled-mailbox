@@ -33,7 +33,9 @@ log "Setting script permissions..."
 chmod +x "${PLUGIN_DIR}/scripts/"*.py 2>/dev/null || true
 chmod +x "${PLUGIN_DIR}/scripts/"*.sh 2>/dev/null || true
 chmod +x "${PLUGIN_DIR}/commands/"*.sh 2>/dev/null || true
-chmod +x "${PLUGIN_DIR}/callbacks.sh" 2>/dev/null || true
+chmod +x "${PLUGIN_DIR}/callbacks.sh"  2>/dev/null || true
+chmod +x "${PLUGIN_DIR}/fpp_start.sh"  2>/dev/null || true
+chmod +x "${PLUGIN_DIR}/fpp_stop.sh"   2>/dev/null || true
 
 # ── Create media directories ─────────────────────────────────────
 log "Creating media directories..."
