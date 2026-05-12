@@ -382,18 +382,25 @@ class GPIOInputs:
         self._readers: Dict[str, Ld2410UsbReader] = {}
 
         # ── GPIO buttons ──────────────────────────────────────────────────
+        self._letter_btn   = None
+        self._donation_btn = None
         if Button is None:
             print("[GPIOInputs] gpiozero not available — GPIO sensors disabled.", flush=True)
-            self._letter_btn   = None
-            self._donation_btn = None
         else:
-            self._letter_btn = Button(letter_pin, pull_up=True, bounce_time=0.05)
-            self._letter_btn.when_pressed = lambda: self._emit("l")
+            try:
+                self._letter_btn = Button(letter_pin, pull_up=True, bounce_time=0.05)
+                self._letter_btn.when_pressed = lambda: self._emit("l")
+                print(f"[GPIOInputs] Letter sensor on GPIO{letter_pin} OK", flush=True)
 
-            if donation_pin is not None:
-                self._donation_btn = Button(donation_pin, pull_up=True, bounce_time=0.05)
-                self._donation_btn.when_pressed = lambda: self._emit("d")
-            else:
+                if donation_pin is not None:
+                    self._donation_btn = Button(donation_pin, pull_up=True, bounce_time=0.05)
+                    self._donation_btn.when_pressed = lambda: self._emit("d")
+                    print(f"[GPIOInputs] Donation sensor on GPIO{donation_pin} OK", flush=True)
+            except Exception as exc:
+                print(f"[GPIOInputs] WARNING: GPIO init failed ({exc}) — "
+                      "letter/donation sensors disabled. Radar will still work.",
+                      flush=True)
+                self._letter_btn   = None
                 self._donation_btn = None
 
         # ── LD2410 radar readers ───────────────────────────────────────────
