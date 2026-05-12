@@ -16,9 +16,12 @@ import threading
 import datetime as dt
 from typing import Any, Dict, Optional
 
-# ── Ensure our scripts/ dir is importable ──────────────────────────────────
+# ── Ensure our scripts/ dir and vendor dir are importable ─────────────────
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_VENDOR_DIR  = os.path.join(_SCRIPT_DIR, "vendor")
 sys.path.insert(0, _SCRIPT_DIR)
+if os.path.isdir(_VENDOR_DIR):
+    sys.path.insert(0, _VENDOR_DIR)
 
 from playback import Player
 from ha import HAMqtt

@@ -38,25 +38,33 @@ else
     log "WARN: apt-get failed or partial — will try pip3 fallbacks"
 fi
 
-# ── pip3 fallbacks for critical packages ────────────────────────
-# pyserial is required for radar; install via pip3 if apt failed.
-if ! python3 -c "import serial" 2>/dev/null; then
-    log "pyserial not found — installing via pip3..."
-    pip3 install --quiet --break-system-packages pyserial >> "$LOGFILE" 2>&1 \
-        || pip3 install --quiet pyserial >> "$LOGFILE" 2>&1 \
-        || log "WARN: pip3 pyserial install also failed — radar will be disabled"
-else
-    log "pyserial already available"
-fi
+# ── Vendor directory for pip packages (no root required) ─────────────────
+# Install critical packages into scripts/vendor/ so they work regardless
+# of whether apt-get had root access to install system-wide.
+VENDOR_DIR="${PLUGIN_DIR}/scripts/vendor"
+mkdir -p "$VENDOR_DIR"
 
-if ! python3 -c "import paho.mqtt.client" 2>/dev/null; then
-    log "paho-mqtt not found — installing via pip3..."
-    pip3 install --quiet --break-system-packages paho-mqtt >> "$LOGFILE" 2>&1 \
-        || pip3 install --quiet paho-mqtt >> "$LOGFILE" 2>&1 \
-        || log "WARN: pip3 paho-mqtt install failed — MQTT will be disabled"
-else
-    log "paho-mqtt already available"
-fi
+install_pip_pkg() {
+    local pkg="$1"
+    local import_name="$2"
+    # Check system Python path first
+    if python3 -c "import ${import_name}" 2>/dev/null; then
+        log "$pkg already available system-wide"
+        return 0
+    fi
+    # Check vendor path
+    if PYTHONPATH="$VENDOR_DIR" python3 -c "import ${import_name}" 2>/dev/null; then
+        log "$pkg already in vendor dir"
+        return 0
+    fi
+    log "$pkg not found — installing to vendor dir..."
+    pip3 install --quiet --target="$VENDOR_DIR" "$pkg" >> "$LOGFILE" 2>&1 \
+        && log "$pkg installed to vendor dir OK" \
+        || log "WARN: $pkg vendor install failed — feature may be disabled"
+}
+
+install_pip_pkg "pyserial"  "serial"
+install_pip_pkg "paho-mqtt" "paho"
 
 # ── Optional: Adafruit DHT support ────────────────────────────────
 if command -v pip3 >/dev/null 2>&1; then

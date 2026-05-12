@@ -33,13 +33,30 @@ switch ($action) {
     respond(true, "Stop queued.");
 
   case 'restart':
-    // Stop then start via callbacks.sh
+    // Kill ALL existing daemon instances, then start fresh via callbacks.sh
+    @exec("pkill -f sled_daemon.py 2>/dev/null");
+    sleep(1);
     if (!$callbacks || !file_exists($callbacks))
       respond(false, "callbacks.sh not found");
-    @exec("bash " . escapeshellarg($callbacks) . " pluginStop > /dev/null 2>&1");
-    sleep(1);
     @exec("bash " . escapeshellarg($callbacks) . " pluginStart > /dev/null 2>&1 &");
     respond(true, "Daemon restart initiated.");
+
+  case 'install_deps': {
+    $pluginDir2 = realpath(dirname(__FILE__) . "/../");
+    $vendor = $pluginDir2 . "/scripts/vendor";
+    @mkdir($vendor, 0755, true);
+    $out = [];
+    foreach (["pyserial:serial", "paho-mqtt:paho"] as $spec) {
+      [$pkg, $mod] = explode(":", $spec);
+      $check = shell_exec("python3 -c 'import $mod' 2>&1");
+      if (trim($check) === "") { $out[] = "$pkg: already available"; continue; }
+      $check2 = shell_exec("PYTHONPATH=" . escapeshellarg($vendor) . " python3 -c 'import $mod' 2>&1");
+      if (trim($check2) === "") { $out[] = "$pkg: already in vendor"; continue; }
+      $res = shell_exec("pip3 install --quiet --target=" . escapeshellarg($vendor) . " $pkg 2>&1");
+      $out[] = "$pkg: " . (trim($res) ?: "installed OK");
+    }
+    respond(true, implode("; ", $out));
+  }
 
   // ── Radar diagnostic mode ──────────────────────────────────────────────
   case 'diag_start_a':
