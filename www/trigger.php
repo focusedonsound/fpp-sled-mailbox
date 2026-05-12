@@ -52,7 +52,7 @@ switch ($action) {
       if (trim($check) === "") { $out[] = "$pkg: already available"; continue; }
       $check2 = shell_exec("PYTHONPATH=" . escapeshellarg($vendor) . " python3 -c 'import $mod' 2>&1");
       if (trim($check2) === "") { $out[] = "$pkg: already in vendor"; continue; }
-      $res = shell_exec("pip3 install --quiet --target=" . escapeshellarg($vendor) . " $pkg 2>&1");
+      $res = shell_exec("python3 -m pip install --quiet --target=" . escapeshellarg($vendor) . " $pkg 2>&1");
       $out[] = "$pkg: " . (trim($res) ?: "installed OK");
     }
     respond(true, implode("; ", $out));

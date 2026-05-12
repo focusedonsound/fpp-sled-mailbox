@@ -58,7 +58,7 @@ install_pip_pkg() {
         return 0
     fi
     log "$pkg not found — installing to vendor dir..."
-    pip3 install --quiet --target="$VENDOR_DIR" "$pkg" >> "$LOGFILE" 2>&1 \
+    python3 -m pip install --quiet --target="$VENDOR_DIR" "$pkg" >> "$LOGFILE" 2>&1 \
         && log "$pkg installed to vendor dir OK" \
         || log "WARN: $pkg vendor install failed — feature may be disabled"
 }
@@ -67,10 +67,9 @@ install_pip_pkg "pyserial"  "serial"
 install_pip_pkg "paho-mqtt" "paho"
 
 # ── Optional: Adafruit DHT support ────────────────────────────────
-if command -v pip3 >/dev/null 2>&1; then
+if python3 -m pip --version >/dev/null 2>&1; then
     log "Installing optional Adafruit DHT library..."
-    pip3 install --quiet --break-system-packages adafruit-circuitpython-dht >> "$LOGFILE" 2>&1 \
-        || pip3 install --quiet adafruit-circuitpython-dht >> "$LOGFILE" 2>&1 \
+    python3 -m pip install --quiet --target="$VENDOR_DIR" adafruit-circuitpython-dht >> "$LOGFILE" 2>&1 \
         || log "WARN: adafruit-dht install failed — DHT11 sensor disabled (non-fatal)"
 fi
 
