@@ -172,7 +172,15 @@ def _pack_cfg_frame(cmd: int, params: bytes = b"") -> bytes:
 def _read_cfg_response(ser, timeout: float = 0.5) -> Optional[bytes]:
     """
     Read one config-mode response frame from the serial port.
-    Returns the inner payload bytes (between header and footer), or None.
+    Returns the inner payload bytes, or None on timeout.
+
+    Frame layout:
+      HDR_CFG (4) | len u16le (2) | payload (len bytes) | footer (4)
+
+    Footer is nominally FTR_CFG = 04 03 02 01 but some LD2410B firmware
+    variants use 04 03 02 81 or 04 03 82 01.  We therefore use length-based
+    parsing: once we have HDR+len+payload bytes in the buffer we accept the
+    frame regardless of footer content.
     """
     deadline = time.time() + timeout
     buf = bytearray()
@@ -180,28 +188,36 @@ def _read_cfg_response(ser, timeout: float = 0.5) -> Optional[bytes]:
         chunk = ser.read(ser.in_waiting or 1)
         if chunk:
             buf.extend(chunk)
+
+        # Locate config-frame header
         start = buf.find(HDR_CFG)
         if start < 0:
-            if len(buf) > 256:
+            if len(buf) > 512:
                 buf.clear()
             continue
         if start > 0:
             del buf[:start]
-        end = buf.find(FTR_CFG, 4)
-        if end < 0:
+
+        # Need at least header(4) + length(2) = 6 bytes to know payload size
+        if len(buf) < 6:
             continue
-        end += len(FTR_CFG)
-        frame = bytes(buf[:end])
-        del buf[:end]
-        body = frame[4:-4]
-        if len(body) < 4:
+
+        data_len = _u16le(buf, 4)
+        if data_len > 256:
+            # Implausibly large — not a real cfg frame; skip this header
+            del buf[:4]
             continue
-        # body: [len u16le] [cmd+1 u16le] [status u16le] [data...]
-        data_len = _u16le(body, 0)
-        return body[2:2 + data_len]
-    # Timeout — log first 32 bytes of what was received for debugging
-    if buf:
-        print(f"[LD2410] cfg_response timeout, buf={buf[:32].hex()}", flush=True)
+
+        # Need header(4) + length(2) + payload(data_len) + footer(4)
+        total_needed = 4 + 2 + data_len + 4
+        if len(buf) < total_needed:
+            continue
+
+        # Extract payload (skipping header and length field)
+        payload = bytes(buf[6: 6 + data_len])
+        del buf[:total_needed]
+        return payload
+
     return None
 
 
