@@ -13,12 +13,26 @@ LOG_FILE="/home/fpp/media/logs/SledMailbox.log"
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [callbacks] $*" >> "$LOG_FILE"; }
 
 daemon_start() {
+    # At boot, FPP calls pluginStart very early — before /home/fpp/media/ is
+    # guaranteed to be writable.  Wait up to 15 s for the logs directory to
+    # become available so log writes and the daemon's FileHandler both work.
+    local waited=0
+    while [[ ! -w "/home/fpp/media/logs" ]] && (( waited < 15 )); do
+        sleep 1
+        (( waited++ )) || true
+    done
+    # Ensure the logs dir exists even on first boot
+    mkdir -p "/home/fpp/media/logs" 2>/dev/null || true
+
     # Check if already running
     if [[ -f "$PID_FILE" ]]; then
         PID=$(cat "$PID_FILE" 2>/dev/null || true)
         if [[ -n "$PID" ]] && kill -0 "$PID" 2>/dev/null; then
-            log "Daemon already running (PID=$PID)"
-            return 0
+            # Verify it really is our daemon (stale PIDs survive reboots)
+            if grep -q "sled_daemon" /proc/"$PID"/cmdline 2>/dev/null; then
+                log "Daemon already running (PID=$PID)"
+                return 0
+            fi
         fi
         rm -f "$PID_FILE"
     fi
