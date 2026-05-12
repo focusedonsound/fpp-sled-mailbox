@@ -55,26 +55,13 @@ switch ($action) {
 
   case 'install_deps': {
     $pluginDir2 = realpath(dirname(__FILE__) . "/../");
-    $vendor = $pluginDir2 . "/scripts/vendor";
+    $vendor     = $pluginDir2 . "/scripts/vendor";
+    $installPy  = $pluginDir2 . "/scripts/install_vendor.py";
     @mkdir($vendor, 0755, true);
-
-    // Bootstrap pip via ensurepip if python3 -m pip isn't available yet
-    $pipCheck = trim(shell_exec('python3 -m pip --version 2>&1') ?: '');
-    if (strpos($pipCheck, 'pip') === false) {
-      shell_exec('python3 -m ensurepip --upgrade 2>&1');
-    }
-
-    $out = [];
-    foreach (["pyserial:serial", "paho-mqtt:paho"] as $spec) {
-      [$pkg, $mod] = explode(":", $spec);
-      $check = shell_exec("python3 -c 'import $mod' 2>&1");
-      if (trim($check) === "") { $out[] = "$pkg: already available"; continue; }
-      $check2 = shell_exec("PYTHONPATH=" . escapeshellarg($vendor) . " python3 -c 'import $mod' 2>&1");
-      if (trim($check2) === "") { $out[] = "$pkg: already in vendor"; continue; }
-      $res = shell_exec("python3 -m pip install --quiet --target=" . escapeshellarg($vendor) . " $pkg 2>&1");
-      $out[] = "$pkg: " . (trim($res) ?: "installed OK");
-    }
-    respond(true, implode("; ", $out));
+    if (!file_exists($installPy))
+      respond(false, "install_vendor.py not found");
+    $out = trim(shell_exec("python3 " . escapeshellarg($installPy) . " " . escapeshellarg($vendor) . " 2>&1") ?: "");
+    respond(true, $out ?: "install_vendor.py ran (no output)");
   }
 
   // ── Radar diagnostic mode ──────────────────────────────────────────────

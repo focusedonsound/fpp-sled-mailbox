@@ -44,35 +44,16 @@ fi
 VENDOR_DIR="${PLUGIN_DIR}/scripts/vendor"
 mkdir -p "$VENDOR_DIR"
 
-# Bootstrap pip if not available
-if ! python3 -m pip --version >/dev/null 2>&1; then
-    log "pip not available — bootstrapping via ensurepip..."
-    python3 -m ensurepip --upgrade >> "$LOGFILE" 2>&1 \
-        && log "ensurepip OK" \
-        || log "WARN: ensurepip failed"
+# Install critical packages into vendor dir using our pip-free downloader
+INSTALL_PY="${PLUGIN_DIR}/scripts/install_vendor.py"
+if [[ -f "$INSTALL_PY" ]]; then
+    log "Running install_vendor.py to fetch pyserial and paho-mqtt..."
+    python3 "$INSTALL_PY" "$VENDOR_DIR" >> "$LOGFILE" 2>&1 \
+        && log "install_vendor.py completed" \
+        || log "WARN: install_vendor.py had errors (check log above)"
+else
+    log "WARN: install_vendor.py not found — pyserial/paho-mqtt may be missing"
 fi
-
-install_pip_pkg() {
-    local pkg="$1"
-    local import_name="$2"
-    # Check system Python path first
-    if python3 -c "import ${import_name}" 2>/dev/null; then
-        log "$pkg already available system-wide"
-        return 0
-    fi
-    # Check vendor path
-    if PYTHONPATH="$VENDOR_DIR" python3 -c "import ${import_name}" 2>/dev/null; then
-        log "$pkg already in vendor dir"
-        return 0
-    fi
-    log "$pkg not found — installing to vendor dir..."
-    python3 -m pip install --quiet --target="$VENDOR_DIR" "$pkg" >> "$LOGFILE" 2>&1 \
-        && log "$pkg installed to vendor dir OK" \
-        || log "WARN: $pkg vendor install failed — feature may be disabled"
-}
-
-install_pip_pkg "pyserial"  "serial"
-install_pip_pkg "paho-mqtt" "paho"
 
 # ── Optional: Adafruit DHT support ────────────────────────────────
 if python3 -m pip --version >/dev/null 2>&1; then
