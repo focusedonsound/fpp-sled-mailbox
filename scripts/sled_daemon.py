@@ -24,6 +24,7 @@ from playback import Player
 from ha import HAMqtt
 from sensors import MockInputs, GPIOInputs
 from sled_db import SledDB
+from sled_telemetry import SledTelemetry
 
 # Optional DHT11 support
 try:
@@ -297,6 +298,10 @@ def main() -> None:
     ha     = HAMqtt(cfg)
     db     = SledDB()
 
+    # ── Telemetry (non-blocking background thread) ─────────────────────────
+    telemetry = SledTelemetry(cfg, db)
+    telemetry.start()
+
     start_dht_thread(cfg, ha)
 
     # Restore persisted counters to MQTT
@@ -557,6 +562,7 @@ def main() -> None:
 
     finally:
         log.info("SLED daemon shutting down...")
+        telemetry.stop()
         player.stop_idle()
         screen_on()
         ha.close()

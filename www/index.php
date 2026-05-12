@@ -31,8 +31,9 @@ function defaultCfg() {
       "parked_timeout_s"   => 180,
       "direction_window_s" => 10.0,
     ],
-    "mqtt"  => ["enabled" => false, "base" => "sled", "device_name" => "SLED Santa Mailbox"],
-    "paths" => ["videos" => "/home/fpp/media/videos"],
+    "mqtt"      => ["enabled" => false, "base" => "sled", "device_name" => "SLED Santa Mailbox"],
+    "paths"     => ["videos" => "/home/fpp/media/videos"],
+    "telemetry" => ["opt_in" => true, "install_id" => ""],
   ];
 }
 
@@ -611,6 +612,47 @@ $serialPorts = listSerialPorts();
           </tr>
 
           </tbody><!-- end radarRows -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── Footer: Non-commercial notice + telemetry opt-in ────────── -->
+  <div class="fppTableWrapper fppTableWrapperAsTable mb-3">
+    <div class="fppTableContents">
+      <table class="fppSelectableRowTable" style="width:100%;">
+        <thead>
+          <tr>
+            <th style="padding:8px;">
+              <i class="fas fa-fw fa-heart"></i> About This Plugin
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding:12px 16px;">
+              <p class="mb-3">
+                SLED and Announcement Assistant are free for personal use.
+                If you&rsquo;re using either plugin in a paid display, sponsored event, or
+                professional environment &mdash; please consider
+                <a href="https://paypal.me/NScilingo" target="_blank" rel="noopener noreferrer">
+                  making a donation</a>.
+                It helps keep development going.
+              </p>
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="telemetry_opt_in"
+                       id="telemetryOptIn" value="1"
+                       <?php echo !empty($cfg['telemetry']['opt_in']) ? 'checked' : ''; ?> />
+                <label class="form-check-label small" for="telemetryOptIn" style="cursor:pointer;">
+                  Help improve this plugin by sharing anonymous usage stats
+                  <span style="cursor:help; color:var(--bs-info);"
+                        title="Sends once per day: plugin version, FPP version, Pi model, which features are enabled (on/off only), and lifetime event counts. No personal data is collected and no IP addresses are stored. This information is used to understand how the plugin is being used and to prioritize development.">
+                    <i class="fas fa-circle-question fa-xs"></i>
+                  </span>
+                </label>
+              </div>
+            </td>
+          </tr>
         </tbody>
       </table>
     </div>

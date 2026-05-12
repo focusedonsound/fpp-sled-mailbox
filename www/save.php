@@ -17,6 +17,12 @@ function pClips($key) {
   if (!isset($_POST[$key]) || !is_array($_POST[$key])) return [];
   return array_values(array_filter(array_map('trim', $_POST[$key])));
 }
+function generateUUID() {
+  $data = random_bytes(16);
+  $data[6] = chr(ord($data[6]) & 0x0f | 0x40);
+  $data[8] = chr(ord($data[8]) & 0x3f | 0x80);
+  return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
+}
 
 $dir = dirname($configFile);
 if (!is_dir($dir))      respond(false, "Config directory missing: $dir");
@@ -67,6 +73,12 @@ $ref = strtoupper(pStr("toward_ref", "AB"));
 $cfg["direction"]["toward_reference"] = in_array($ref, $validRef) ? $ref : "AB";
 $cfg["direction"]["label_toward"]     = pStr("label_toward", "Inbound")  ?: "Inbound";
 $cfg["direction"]["label_away"]       = pStr("label_away",   "Outbound") ?: "Outbound";
+
+// ── Telemetry ─────────────────────────────────────────────────────────────
+// Preserve existing install_id or generate one on first save
+$existingId = $cfg["telemetry"]["install_id"] ?? "";
+$cfg["telemetry"]["install_id"] = ($existingId !== "") ? $existingId : generateUUID();
+$cfg["telemetry"]["opt_in"]     = pBool("telemetry_opt_in");
 
 // ── Atomic write ──────────────────────────────────────────────────────────
 $tmp  = $configFile . ".tmp";
