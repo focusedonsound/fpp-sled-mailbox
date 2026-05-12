@@ -214,7 +214,7 @@ def ld2410_enter_config(ser) -> bool:
     """
     frame = _pack_cfg_frame(0x00FF, b"\x01\x00")
     ser.write(frame)
-    rsp = _read_cfg_response(ser)
+    rsp = _read_cfg_response(ser, timeout=1.5)  # generous: buffer flush precedes call
     return rsp is not None and len(rsp) >= 4 and rsp[2:4] == b"\x00\x00"
 
 

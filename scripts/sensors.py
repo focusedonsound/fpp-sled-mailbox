@@ -166,6 +166,13 @@ class Ld2410UsbReader(threading.Thread):
 
     def _apply_diag_change(self, ser, target: bool) -> bool:
         """Switch radar to/from engineering mode. Returns True on success."""
+        # Flush streaming data frames from the input buffer so the config
+        # ACK isn't buried under 100 ms worth of radar frames.
+        try:
+            ser.reset_input_buffer()
+        except Exception:
+            pass
+        time.sleep(0.05)  # let radar finish any in-flight frame
         ok = ld2410_enter_config(ser)
         if not ok:
             print(f"[LD2410-{self.sensor_name}] enter_config failed", flush=True)
@@ -181,6 +188,9 @@ class Ld2410UsbReader(threading.Thread):
 
     def _apply_config_write(self, ser, cfg: Ld2410Config) -> bool:
         """Write config to device flash. Returns True on success."""
+        try: ser.reset_input_buffer()
+        except Exception: pass
+        time.sleep(0.05)
         ok = ld2410_enter_config(ser)
         if not ok:
             return False
@@ -190,6 +200,9 @@ class Ld2410UsbReader(threading.Thread):
         return ok
 
     def _read_device_config(self, ser) -> Optional[Ld2410Config]:
+        try: ser.reset_input_buffer()
+        except Exception: pass
+        time.sleep(0.05)
         ok = ld2410_enter_config(ser)
         if not ok:
             return None
