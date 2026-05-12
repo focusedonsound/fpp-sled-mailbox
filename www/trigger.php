@@ -41,6 +41,18 @@ switch ($action) {
     @exec("bash " . escapeshellarg($callbacks) . " pluginStart > /dev/null 2>&1 &");
     respond(true, "Daemon restart initiated.");
 
+  case 'pkgcheck': {
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode([
+      'dpkg_serial'  => trim(shell_exec('dpkg -l python3-serial 2>&1 | tail -1') ?: ''),
+      'dpkg_pip'     => trim(shell_exec('dpkg -l python3-pip 2>&1 | tail -1') ?: ''),
+      'apt_serial'   => trim(shell_exec('apt-get install -y python3-serial 2>&1 | tail -3') ?: ''),
+      'ensurepip'    => trim(shell_exec('python3 -m ensurepip --version 2>&1') ?: ''),
+      'serial_after' => trim(shell_exec('python3 -c "import serial; print(serial.__version__)" 2>&1') ?: ''),
+    ], JSON_PRETTY_PRINT);
+    exit;
+  }
+
   case 'install_deps': {
     $pluginDir2 = realpath(dirname(__FILE__) . "/../");
     $vendor = $pluginDir2 . "/scripts/vendor";
