@@ -19,6 +19,15 @@
     },
     {
       "minFPPVersion": "9.0",
+      "maxFPPVersion": "9.99",
+      "branch": "main",
+      "sha": "",
+      "dependencies": {
+        "packages": ["python3-serial", "python3-paho-mqtt", "mpv", "python3-gpiozero"]
+      }
+    },
+    {
+      "minFPPVersion": "10.0",
       "maxFPPVersion": "0",
       "branch": "main",
       "sha": "",
