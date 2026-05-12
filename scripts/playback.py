@@ -39,11 +39,14 @@ class Player:
         if not os.path.isfile(path):
             print(f"[Player] Idle video not found: {path}", flush=True)
             return
-        self.idle_proc = subprocess.Popen(
-            ["mpv", "--fs", "--no-osd-bar", "--loop=inf", "--really-quiet", path],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        try:
+            self.idle_proc = subprocess.Popen(
+                ["mpv", "--fs", "--no-osd-bar", "--loop=inf", "--really-quiet", path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except FileNotFoundError:
+            print("[Player] mpv not found — video playback disabled.", flush=True)
 
     def stop_idle(self) -> None:
         """Stop the idle loop if running."""
@@ -74,11 +77,15 @@ class Player:
         if not os.path.isfile(path):
             print(f"[Player] Clip not found: {path}", flush=True)
             return 1
-        proc = subprocess.Popen(
-            ["mpv", "--fs", "--no-osd-bar", "--ontop", "--really-quiet", path],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        try:
+            proc = subprocess.Popen(
+                ["mpv", "--fs", "--no-osd-bar", "--ontop", "--really-quiet", path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except FileNotFoundError:
+            print("[Player] mpv not found — skipping clip playback.", flush=True)
+            return 1
         try:
             return proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
