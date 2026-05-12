@@ -98,8 +98,12 @@ switch ($action) {
   // ── System diagnostics ────────────────────────────────────────────────
   case 'sysinfo': {
     header('Content-Type: application/json; charset=utf-8');
-    $pyserial = trim(shell_exec('python3 -c "import serial; print(serial.__version__)" 2>&1') ?: "");
-    $paho     = trim(shell_exec('python3 -c "import paho; print(paho.__version__)" 2>&1') ?: "");
+    $vendorDir = realpath(dirname(__FILE__) . "/../scripts/vendor");
+    $vendorArg = $vendorDir ? escapeshellarg($vendorDir) : "''";
+    // Check packages through both system Python and the vendor directory
+    $pyserial = trim(shell_exec("python3 -c \"import sys; sys.path.insert(0,$vendorArg); import serial; print(serial.__version__)\" 2>&1") ?: "");
+    $paho     = trim(shell_exec("python3 -c \"import sys; sys.path.insert(0,$vendorArg); import paho; print(paho.__version__)\" 2>&1") ?: "");
+    $mpv      = trim(shell_exec('which mpv 2>/dev/null || echo ""') ?: "");
     $usbDevs  = trim(shell_exec('ls /dev/ttyUSB* 2>/dev/null') ?: "none");
     $daemonPid= trim(shell_exec('pgrep -f sled_daemon.py 2>/dev/null') ?: "not running");
     $svcState = trim(shell_exec('systemctl is-active sled-mailbox 2>/dev/null') ?: "unknown");
@@ -113,11 +117,38 @@ switch ($action) {
       "user"        => $whoami,
       "pyserial"    => $pyserial ?: "NOT FOUND",
       "paho_mqtt"   => $paho ?: "NOT FOUND",
+      "mpv"         => $mpv ?: "NOT FOUND",
       "usb_devices" => $usbDevs,
       "daemon_pid"  => $daemonPid,
       "svc_state"   => $svcState,
       "install_log" => $installLog,
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    exit;
+  }
+
+  // ── Dependency health check (used by UI banner) ───────────────────────
+  case 'depcheck': {
+    header('Content-Type: application/json; charset=utf-8');
+    $vendorDir = realpath(dirname(__FILE__) . "/../scripts/vendor");
+    $vendorArg = $vendorDir ? escapeshellarg($vendorDir) : "''";
+    $hasMpv     = (trim(shell_exec('which mpv 2>/dev/null') ?: "") !== "");
+    $hasSerial  = (trim(shell_exec("python3 -c \"import sys; sys.path.insert(0,$vendorArg); import serial\" 2>&1") ?: "") === "");
+    $hasDaemon  = (trim(shell_exec('pgrep -f sled_daemon.py 2>/dev/null') ?: "") !== "");
+
+    $missing = [];
+    if (!$hasMpv)    $missing[] = "mpv";
+    if (!$hasSerial) $missing[] = "python3-serial";
+
+    echo json_encode([
+      "ok"          => (count($missing) === 0),
+      "daemon_up"   => $hasDaemon,
+      "mpv"         => $hasMpv,
+      "pyserial"    => $hasSerial,
+      "missing"     => $missing,
+      "fix_cmd"     => count($missing) > 0
+          ? "sudo apt-get install -y " . implode(" ", $missing)
+          : "",
+    ]);
     exit;
   }
 

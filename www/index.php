@@ -117,6 +117,17 @@ $serialPorts = listSerialPorts();
   </div>
 </div>
 
+<!-- ── Dependency health banner (populated by JS on load) ─────────────── -->
+<div id="sledDepBanner" class="alert alert-warning d-none mb-3" role="alert">
+  <div class="d-flex justify-content-between align-items-start gap-3">
+    <div>
+      <strong><i class="fas fa-fw fa-triangle-exclamation"></i> Missing dependencies detected</strong>
+      <div id="sledDepMsg" class="mt-1 small"></div>
+    </div>
+    <button type="button" class="btn-close flex-shrink-0" onclick="document.getElementById('sledDepBanner').classList.add('d-none')"></button>
+  </div>
+</div>
+
 <p class="text-muted">
   Configure video clips for letter and donation events. Wire sensor GPIO pins to
   <strong>FPP Commands</strong> using FPP&rsquo;s built-in GPIO plugin &mdash;
@@ -775,4 +786,33 @@ function sledToggle(id, enabled) {
   const el = document.getElementById(id);
   if (el) el.style.opacity = enabled ? '1' : '0.4';
 }
+
+// ── Dependency health check ───────────────────────────────────────────────
+(async function sledDepCheck() {
+  try {
+    const res = await fetch(sledUrl('trigger.php') + '&action=depcheck', { cache:'no-store' });
+    const j   = await sledJson(res);
+    if (j.ok) return;   // all good — banner stays hidden
+
+    const banner = document.getElementById('sledDepBanner');
+    const msgEl  = document.getElementById('sledDepMsg');
+    if (!banner || !msgEl) return;
+
+    const items = [];
+    if (!j.mpv)      items.push('<strong>mpv</strong> (video playback)');
+    if (!j.pyserial) items.push('<strong>python3-serial</strong> (radar/USB communication)');
+    if (!j.daemon_up) items.push('<em>SLED daemon is not running</em>');
+
+    let html = 'The following are missing: ' + items.join(', ') + '.';
+    if (j.fix_cmd) {
+      html += '<br>To fix, SSH into your FPP device and run:<br>'
+            + '<code class="user-select-all">' + j.fix_cmd + '</code>'
+            + '<br><small class="text-muted">Then use the Restart Daemon button below to apply.</small>';
+    }
+    msgEl.innerHTML = html;
+    banner.classList.remove('d-none');
+  } catch(e) {
+    // Network error — don't show banner, not worth alarming the user
+  }
+})();
 </script>
