@@ -1,0 +1,19 @@
+[Unit]
+Description=SLED Smart Letters to Santa Mailbox Daemon
+After=network.target fppd.service
+Wants=fppd.service
+
+[Service]
+Type=simple
+User=fpp
+Group=fpp
+WorkingDirectory=/home/fpp/media/plugins/fpp-sled-mailbox/scripts
+Environment=PYTHONPATH=/home/fpp/media/plugins/fpp-sled-mailbox/scripts
+ExecStart=/usr/bin/python3 /home/fpp/media/plugins/fpp-sled-mailbox/scripts/sled_daemon.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/home/fpp/media/logs/SledMailbox.log
+StandardError=append:/home/fpp/media/logs/SledMailbox.log
+
+[Install]
+WantedBy=multi-user.target

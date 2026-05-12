@@ -115,5 +115,24 @@ fi
 # ── Chart.js (bundled in repo under js/) ────────────────────────
 # chart.umd.min.js is committed to git — no download needed.
 
+# ── Systemd service ─────────────────────────────────────────────
+# Install and enable the SLED daemon as a systemd service so it
+# starts automatically at boot regardless of FPP version.
+SERVICE_SRC="${PLUGIN_DIR}/sled-mailbox.service"
+SERVICE_DST="/etc/systemd/system/sled-mailbox.service"
+
+if [[ -f "$SERVICE_SRC" ]]; then
+    log "Installing systemd service..."
+    cp "$SERVICE_SRC" "$SERVICE_DST"
+    systemctl daemon-reload >> "$LOGFILE" 2>&1 || true
+    systemctl enable sled-mailbox >> "$LOGFILE" 2>&1 || true
+    # Start (or restart if already running) the daemon immediately
+    systemctl restart sled-mailbox >> "$LOGFILE" 2>&1 && \
+        log "sled-mailbox service started" || \
+        log "WARN: could not start sled-mailbox service (may need reboot)"
+else
+    log "WARN: sled-mailbox.service not found in plugin dir — skipping systemd install"
+fi
+
 log "=== SLED Santa Mailbox install complete ==="
 exit 0
