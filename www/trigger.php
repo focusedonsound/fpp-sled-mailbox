@@ -72,6 +72,32 @@ switch ($action) {
     respond(true, "Radar $side config write queued.");
   }
 
+  // ── System diagnostics ────────────────────────────────────────────────
+  case 'sysinfo': {
+    header('Content-Type: application/json; charset=utf-8');
+    $pyserial = trim(shell_exec('python3 -c "import serial; print(serial.__version__)" 2>&1') ?: "");
+    $paho     = trim(shell_exec('python3 -c "import paho; print(paho.__version__)" 2>&1') ?: "");
+    $usbDevs  = trim(shell_exec('ls /dev/ttyUSB* 2>/dev/null') ?: "none");
+    $daemonPid= trim(shell_exec('pgrep -f sled_daemon.py 2>/dev/null') ?: "not running");
+    $svcState = trim(shell_exec('systemctl is-active sled-mailbox 2>/dev/null') ?: "unknown");
+    $whoami   = trim(shell_exec('whoami') ?: "");
+    $installLog = file_exists('/tmp/SledMailbox_install.log')
+        ? file_get_contents('/tmp/SledMailbox_install.log')
+        : (file_exists('/home/fpp/media/logs/SledMailbox_install.log')
+            ? file_get_contents('/home/fpp/media/logs/SledMailbox_install.log')
+            : "install log not found");
+    echo json_encode([
+      "user"        => $whoami,
+      "pyserial"    => $pyserial ?: "NOT FOUND",
+      "paho_mqtt"   => $paho ?: "NOT FOUND",
+      "usb_devices" => $usbDevs,
+      "daemon_pid"  => $daemonPid,
+      "svc_state"   => $svcState,
+      "install_log" => $installLog,
+    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    exit;
+  }
+
   default:
     respond(false, "Unknown action: " . htmlspecialchars($action));
 }
