@@ -90,4 +90,70 @@ $data = json_encode($cfg, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n";
 if (@file_put_contents($tmp, $data) === false) respond(false, "Failed to write temp file");
 if (!@rename($tmp, $configFile)) { @unlink($tmp); respond(false, "Failed to write config"); }
 
-respond(true, "Settings saved.");
+// ── Auto-create FPP GPIO input triggers ───────────────────────────────────
+// Map BCM GPIO numbers → Raspberry Pi P1 header pin names (FPP's pin format)
+$bcmToP1 = [
+    2=>"P1-3",  3=>"P1-5",  4=>"P1-7",  14=>"P1-8",  15=>"P1-10",
+    17=>"P1-11",18=>"P1-12",27=>"P1-13",22=>"P1-15",  23=>"P1-16",
+    24=>"P1-18",10=>"P1-19", 9=>"P1-21",25=>"P1-22",  11=>"P1-23",
+     8=>"P1-24", 7=>"P1-26", 5=>"P1-29", 6=>"P1-31",  12=>"P1-32",
+    13=>"P1-33",19=>"P1-35",16=>"P1-36",26=>"P1-37",  20=>"P1-38",
+    21=>"P1-40",
+];
+
+function sledGpioEntry($pinName, $desc, $command) {
+    return [
+        "pin"          => $pinName,
+        "enabled"      => true,
+        "mode"         => "gpio_pu",   // input with pull-up (active-low beam break)
+        "desc"         => $desc,
+        "debounceTime" => 50,          // 50 ms debounce
+        "debounceEdge" => "falling",
+        "falling"      => [
+            "command"          => $command,
+            "multisyncCommand" => false,
+            "multisyncHosts"   => "",
+            "args"             => [],
+        ],
+    ];
+}
+
+$gpioFile    = "/home/fpp/media/config/gpio.json";
+$gpioEntries = [];
+if (file_exists($gpioFile)) {
+    $gj = @json_decode(@file_get_contents($gpioFile), true);
+    if (is_array($gj)) $gpioEntries = $gj;
+}
+
+// Remove any existing SLED trigger entries so we can re-add cleanly
+$gpioEntries = array_values(array_filter($gpioEntries, function($e) {
+    $cmd = $e["falling"]["command"] ?? ($e["rising"]["command"] ?? "");
+    return strpos($cmd, "SLED - Trigger") !== 0;
+}));
+
+// Add letter trigger if pin is configured and in the map
+$letterBcm   = $cfg["pins"]["letter"]   ?? null;
+$donationBcm = $cfg["pins"]["donation"] ?? null;
+$gpioNotes   = [];
+
+if ($letterBcm && isset($bcmToP1[$letterBcm])) {
+    $gpioEntries[] = sledGpioEntry($bcmToP1[$letterBcm], "SLED Letter Sensor (GPIO{$letterBcm})", "SLED - Trigger Letter");
+    $gpioNotes[] = "Letter trigger → GPIO{$letterBcm} ({$bcmToP1[$letterBcm]})";
+}
+if ($donationBcm && isset($bcmToP1[$donationBcm])) {
+    $gpioEntries[] = sledGpioEntry($bcmToP1[$donationBcm], "SLED Donation Sensor (GPIO{$donationBcm})", "SLED - Trigger Donation");
+    $gpioNotes[] = "Donation trigger → GPIO{$donationBcm} ({$bcmToP1[$donationBcm]})";
+}
+
+$gpioMsg = "";
+if (!empty($gpioNotes)) {
+    $gpioJson = json_encode(array_values($gpioEntries), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n";
+    $gpioTmp  = $gpioFile . ".tmp";
+    if (@file_put_contents($gpioTmp, $gpioJson) !== false && @rename($gpioTmp, $gpioFile)) {
+        $gpioMsg = " GPIO triggers written (" . implode(", ", $gpioNotes) . "). Restart FPP to activate.";
+    } else {
+        $gpioMsg = " Note: could not write GPIO config (check permissions).";
+    }
+}
+
+respond(true, "Settings saved." . $gpioMsg);

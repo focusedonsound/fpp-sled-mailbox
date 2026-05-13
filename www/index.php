@@ -330,7 +330,7 @@ $serialPorts = listSerialPorts();
           <tr>
             <th colspan="4" style="padding:8px;">
               <i class="fas fa-fw fa-microchip"></i> Sensors &amp; Cooldowns
-              <span class="text-muted fw-normal small ms-2">BCM pin numbers &mdash; wire to FPP GPIO plugin to fire SLED Commands</span>
+              <span class="text-muted fw-normal small ms-2">BCM pin numbers &mdash; GPIO triggers are created automatically when you Save Settings</span>
             </th>
           </tr>
         </thead>
