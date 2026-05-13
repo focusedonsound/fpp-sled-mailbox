@@ -145,6 +145,43 @@ $effPort = $customActive ? $mqtt['port'] : $fppMqtt['port'];
 function e($v) { return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); }
 ?>
 
+<style>
+/* ── SLED plugin — explicit colours for FPP 9.x / 10.x compatibility ──────
+   FPP 9.x uses Bootstrap 4 with its own dark theme; btn-outline-light and
+   alert-warning can render as white-on-white / unreadable there.
+   ───────────────────────────────────────────────────────────────────────── */
+.sled-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .35rem .8rem;
+  font-size: .875rem;
+  font-weight: 500;
+  line-height: 1.5;
+  text-align: center;
+  white-space: nowrap;
+  cursor: pointer;
+  border: 1px solid #3a7fc1;
+  border-radius: .3rem;
+  text-decoration: none !important;
+  background-color: #1a6eb5;
+  color: #fff !important;
+  transition: background-color .15s ease-in-out, border-color .15s;
+  vertical-align: middle;
+}
+.sled-btn:hover, .sled-btn:focus {
+  background-color: #155a94;
+  border-color: #0e4370;
+  color: #fff !important;
+  text-decoration: none !important;
+}
+.sled-btn:disabled, .sled-btn.disabled {
+  opacity: .55;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+</style>
+
 <!-- ── Page header ──────────────────────────────────────────────────────────── -->
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
   <h2 class="mb-0">
@@ -379,13 +416,13 @@ function e($v) { return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); }
 
   <!-- ── Actions ──────────────────────────────────────────────────────────── -->
   <div class="d-flex gap-2 mb-3 flex-wrap">
-    <button type="button" class="buttons btn-outline-light" onclick="sledMqttSave()">
+    <button type="button" class="sled-btn" onclick="sledMqttSave()">
       <i class="fas fa-fw fa-save"></i> Save Settings
     </button>
-    <button type="button" class="buttons btn-outline-light" onclick="sledMqttTest()" id="testBtn">
+    <button type="button" class="sled-btn" onclick="sledMqttTest()" id="testBtn">
       <i class="fas fa-fw fa-plug"></i> Test Connection
     </button>
-    <button type="button" class="buttons btn-outline-light ms-auto" id="cleanupBtn"
+    <button type="button" class="sled-btn ms-auto" id="cleanupBtn"
             onclick="sledMqttCleanup()" title="Remove SLED entities from Home Assistant"
             <?= $running ? '' : 'disabled' ?>>
       <i class="fas fa-fw fa-broom"></i> Remove HA Entities
