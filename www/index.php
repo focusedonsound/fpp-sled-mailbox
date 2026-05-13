@@ -191,8 +191,7 @@ $serialPorts = listSerialPorts();
   The <strong>idle screen</strong> is an FPP playlist that loops during the active schedule window.
   <strong>Letter and donation events</strong> play individual video files in round-robin order —
   upload your videos via <strong>Content Setup &rarr; File Manager</strong>, then select them below.
-  Wire sensor GPIO pins to <em>SLED &ndash; Trigger Letter</em> / <em>SLED &ndash; Trigger Donation</em>
-  using FPP&rsquo;s built-in GPIO plugin.
+  The SLED daemon monitors the sensor GPIO pins directly — no FPP GPIO configuration required.
 </p>
 
 <!-- Playlist name autocomplete populated by JS from /api/playlists -->
