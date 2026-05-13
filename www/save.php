@@ -124,29 +124,58 @@ function sledGpioEntry($pinName, $desc, $command) {
     ];
 }
 
-// ── Remove any SLED entries from FPP's gpio.json ──────────────────────────────
-// The SLED daemon owns GPIO17/18 directly via RPi.GPIO. If FPP's GPIO plugin
-// also claims those pins it wins the race (fppd starts before the daemon) and
-// RPi.GPIO fails with EINVAL. Scrub any SLED trigger entries from gpio.json so
-// FPP never touches those pins.
+// ── Update FPP's gpio.json with SLED reserved-pin placeholders ───────────────
+// The SLED daemon owns the letter/donation GPIO pins directly via RPi.GPIO.
+// If FPP's GPIO plugin also activates those pins it claims them first (fppd
+// starts before the daemon) and RPi.GPIO fails with EINVAL.
+//
+// Strategy: replace any existing SLED entries with DISABLED placeholders.
+// Disabled entries appear in FPP's GPIO Inputs list (so users know the pins
+// are reserved) but fppd never sets up edge detection for them, so the daemon
+// can claim the pins safely.
 $gpioFile    = "/home/fpp/media/config/gpio.json";
 $gpioMsg     = "";
+
+$gpioEntries = [];
 if (file_exists($gpioFile)) {
     $gj = @json_decode(@file_get_contents($gpioFile), true);
-    if (is_array($gj)) {
-        $cleaned = array_values(array_filter($gj, function($e) {
-            $cmd = $e["falling"]["command"] ?? ($e["rising"]["command"] ?? "");
-            return strpos($cmd, "SLED - Trigger") !== 0;
-        }));
-        if (count($cleaned) !== count($gj)) {
-            // Only rewrite if we actually removed something
-            $gpioJson = json_encode($cleaned, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n";
-            $gpioTmp  = $gpioFile . ".tmp";
-            if (@file_put_contents($gpioTmp, $gpioJson) !== false && @rename($gpioTmp, $gpioFile)) {
-                $gpioMsg = " Removed SLED entries from FPP GPIO config — restart FPP to release pins.";
-            }
-        }
-    }
+    if (is_array($gj)) $gpioEntries = $gj;
+}
+
+// Remove any existing SLED entries (enabled or disabled)
+$gpioEntries = array_values(array_filter($gpioEntries, function($e) {
+    return strpos($e["desc"] ?? "", "SLED") !== 0;
+}));
+
+// Add disabled placeholder entries for configured pins
+$letterBcm   = $cfg["pins"]["letter"]   ?? null;
+$donationBcm = $cfg["pins"]["donation"] ?? null;
+
+function sledGpioPlaceholder($pinName, $desc) {
+    return [
+        "pin"          => $pinName,
+        "enabled"      => false,   // disabled — FPP will not claim this pin
+        "mode"         => "gpio_pu",
+        "desc"         => $desc,
+        "debounceTime" => 50,
+        "rising"       => ["command" => "", "multisyncCommand" => false, "multisyncHosts" => "", "args" => []],
+        "falling"      => ["command" => "", "multisyncCommand" => false, "multisyncHosts" => "", "args" => []],
+    ];
+}
+
+if ($letterBcm && isset($bcmToP1[$letterBcm])) {
+    $gpioEntries[] = sledGpioPlaceholder($bcmToP1[$letterBcm], "SLED Letter Sensor — managed by SLED daemon (GPIO{$letterBcm})");
+}
+if ($donationBcm && isset($bcmToP1[$donationBcm])) {
+    $gpioEntries[] = sledGpioPlaceholder($bcmToP1[$donationBcm], "SLED Donation Sensor — managed by SLED daemon (GPIO{$donationBcm})");
+}
+
+$gpioJson = json_encode(array_values($gpioEntries), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n";
+$gpioTmp  = $gpioFile . ".tmp";
+if (@file_put_contents($gpioTmp, $gpioJson) !== false && @rename($gpioTmp, $gpioFile)) {
+    $gpioMsg = " GPIO pins marked as reserved in FPP GPIO Inputs (disabled — SLED daemon owns them).";
+} else {
+    $gpioMsg = " Note: could not update GPIO config (check permissions).";
 }
 
 respond(true, "Settings saved." . $gpioMsg);

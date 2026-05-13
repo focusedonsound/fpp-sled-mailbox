@@ -150,9 +150,20 @@ $serialPorts = listSerialPorts();
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-2">
-  <h2 class="mb-0">
-    <i class="fas fa-fw fa-mailbox"></i> SLED &mdash; Smart Letters to Santa
-  </h2>
+  <div class="d-flex align-items-center gap-3">
+    <h2 class="mb-0">
+      <i class="fas fa-fw fa-mailbox"></i> SLED &mdash; Smart Letters to Santa
+    </h2>
+    <!-- Daemon status pill — updated by JS on page load and after restart -->
+    <span id="sledDaemonPill" style="
+        display:inline-flex; align-items:center; gap:.3rem;
+        padding:.25rem .65rem; border-radius:999px; font-size:.8rem; font-weight:600;
+        background-color:<?php echo $running ? '#198754' : '#dc3545'; ?>;
+        color:#fff; white-space:nowrap;">
+      <i class="fas fa-fw fa-circle fa-xs"></i>
+      <span id="sledDaemonPillText"><?php echo $running ? 'Daemon Running' : 'Daemon Stopped'; ?></span>
+    </span>
+  </div>
   <div class="d-flex align-items-center gap-2">
     <a href="https://buymeacoffee.com/jm9pwtesct" target="_blank" rel="noopener noreferrer"
        class="sled-btn">
@@ -194,7 +205,7 @@ $serialPorts = listSerialPorts();
   <!-- ── Idle Playlist ────────────────────────────────────────────────── -->
   <div class="fppTableWrapper fppTableWrapperAsTable mb-3">
     <div class="fppTableContents fppFThScrollContainer">
-      <table class="fppSelectableRowTable fppStickyTheadTable" style="width:100%;">
+      <table class="fppSelectableRowTable" style="width:100%;">
         <thead>
           <tr>
             <th colspan="2" style="padding:8px;">
@@ -239,7 +250,7 @@ $serialPorts = listSerialPorts();
   <!-- ── Event Videos ───────────────────────────────────────────────────── -->
   <div class="fppTableWrapper fppTableWrapperAsTable mb-3">
     <div class="fppTableContents fppFThScrollContainer">
-      <table class="fppSelectableRowTable fppStickyTheadTable" style="width:100%;">
+      <table class="fppSelectableRowTable" style="width:100%;">
         <thead>
           <tr>
             <th colspan="2" style="padding:8px;">
@@ -330,7 +341,7 @@ $serialPorts = listSerialPorts();
           <tr>
             <th colspan="4" style="padding:8px;">
               <i class="fas fa-fw fa-microchip"></i> Sensors &amp; Cooldowns
-              <span class="text-muted fw-normal small ms-2">BCM pin numbers &mdash; GPIO triggers are created automatically when you Save Settings</span>
+              <span class="text-muted fw-normal small ms-2">BCM pin numbers &mdash; the SLED daemon owns these pins directly; do not add them to FPP&rsquo;s GPIO Inputs</span>
             </th>
           </tr>
         </thead>
@@ -708,17 +719,19 @@ $serialPorts = listSerialPorts();
                   making a donation</a>.
                 It helps keep development going.
               </p>
-              <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" name="telemetry_opt_in"
-                       id="telemetryOptIn" value="1"
-                       <?php echo !empty($cfg['telemetry']['opt_in']) ? 'checked' : ''; ?> />
-                <label class="form-check-label small" for="telemetryOptIn" style="cursor:pointer;">
+              <div class="d-flex align-items-center gap-2">
+                <label class="form-check-label small mb-0" for="telemetryOptIn" style="cursor:pointer;">
                   Help improve this plugin by sharing anonymous usage stats
                   <span style="cursor:help; color:var(--bs-info);"
                         title="Sends once per day: plugin version, FPP version, Pi model, which features are enabled (on/off only), and lifetime event counts. No personal data is collected and no IP addresses are stored. This information is used to understand how the plugin is being used and to prioritize development.">
                     <i class="fas fa-circle-question fa-xs"></i>
                   </span>
                 </label>
+                <div class="form-check form-switch mb-0">
+                  <input class="form-check-input" type="checkbox" name="telemetry_opt_in"
+                         id="telemetryOptIn" value="1"
+                         <?php echo !empty($cfg['telemetry']['opt_in']) ? 'checked' : ''; ?> />
+                </div>
               </div>
             </td>
           </tr>
@@ -867,16 +880,18 @@ async function sledRestart() {
   const res = await fetch(sledUrl('trigger.php') + '&action=restart', { cache:'no-store' });
   const j   = await sledJson(res);
   sledNotify(j.message || (j.status==='OK' ? 'Daemon restarting.' : 'Restart failed.'), j.status !== 'OK');
-  // Refresh daemon badge after a short delay
+  // Refresh daemon badge + header pill after a short delay
   setTimeout(async () => {
     try {
       const r = await fetch(sledUrl('trigger.php') + '&action=depcheck', { cache:'no-store' });
       const d = await r.json();
       const badge = document.getElementById('sledDaemonBadge');
-      if (!badge) return;
-      badge.className = 'badge ' + (d.daemon_up ? 'bg-success' : 'bg-secondary') + ' align-self-center';
-      badge.innerHTML = '<i class="fas fa-fw ' + (d.daemon_up ? 'fa-circle-check' : 'fa-circle-xmark') + '"></i> '
-                      + (d.daemon_up ? 'Daemon running' : 'Daemon stopped');
+      if (badge) {
+        badge.className = 'badge ' + (d.daemon_up ? 'bg-success' : 'bg-secondary') + ' align-self-center';
+        badge.innerHTML = '<i class="fas fa-fw ' + (d.daemon_up ? 'fa-circle-check' : 'fa-circle-xmark') + '"></i> '
+                        + (d.daemon_up ? 'Daemon running' : 'Daemon stopped');
+      }
+      sledUpdateDaemonPill(d.daemon_up);
     } catch(e) {}
   }, 3000);
 }
@@ -1043,11 +1058,22 @@ function sledToggle(id, enabled) {
   if (el) el.style.opacity = enabled ? '1' : '0.4';
 }
 
+// ── Daemon status pill (title bar) ───────────────────────────────────────────
+function sledUpdateDaemonPill(isRunning) {
+  const pill = document.getElementById('sledDaemonPill');
+  const text = document.getElementById('sledDaemonPillText');
+  if (!pill || !text) return;
+  pill.style.backgroundColor = isRunning ? '#198754' : '#dc3545';
+  text.textContent = isRunning ? 'Daemon Running' : 'Daemon Stopped';
+}
+
 // ── Dependency health check ───────────────────────────────────────────────
 (async function sledDepCheck() {
   try {
     const res = await fetch(sledUrl('trigger.php') + '&action=depcheck', { cache:'no-store' });
     const j   = await sledJson(res);
+
+    sledUpdateDaemonPill(j.daemon_up);
 
     // Show banner only when something actionable is wrong.
     // pyserial is flagged in j.missing only when radar is enabled, so j.ok
