@@ -721,6 +721,10 @@ $serialPorts = listSerialPorts();
             title="Kill and restart the SLED car-counter daemon. Use this after saving settings or after a plugin update.">
       <i class="fas fa-fw fa-rotate-right"></i> Restart Daemon
     </button>
+    <button type="button" class="sled-btn sled-btn-sm" onclick="sledShowLog()"
+            title="View the last 60 lines of the daemon log to diagnose startup errors">
+      <i class="fas fa-fw fa-terminal"></i> Show Log
+    </button>
     <span id="sledDaemonBadge"
           class="badge <?php echo $running ? 'bg-success' : 'bg-secondary'; ?> align-self-center"
           title="SLED daemon status">
@@ -730,6 +734,41 @@ $serialPorts = listSerialPorts();
   </div>
 
 </form>
+
+<!-- ── Daemon Log viewer ─────────────────────────────────────────────── -->
+<div class="fppTableWrapper fppTableWrapperAsTable mb-3" id="sledLogPanel" style="display:none;">
+  <div class="fppTableContents">
+    <table class="fppSelectableRowTable" style="width:100%;">
+      <thead>
+        <tr>
+          <th style="padding:8px;">
+            <div class="d-flex justify-content-between align-items-center">
+              <span><i class="fas fa-fw fa-terminal"></i> Daemon Log (last 60 lines)</span>
+              <div class="d-flex gap-2">
+                <button type="button" class="sled-btn sled-btn-sm" onclick="sledLoadLog()">
+                  <i class="fas fa-fw fa-rotate"></i> Refresh
+                </button>
+                <button type="button" class="sled-btn sled-btn-sm" onclick="document.getElementById('sledLogPanel').style.display='none'">
+                  <i class="fas fa-fw fa-xmark"></i> Close
+                </button>
+              </div>
+            </div>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding:0;">
+            <pre id="sledLogOutput"
+                 style="margin:0; padding:10px; max-height:320px; overflow-y:auto;
+                        font-size:.78rem; line-height:1.4; white-space:pre-wrap;
+                        background:#1a1a1a; color:#d0d0d0; border-radius:0 0 4px 4px;">Loading…</pre>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
 
 <!-- ── FPP GPIO Wiring Guide ───────────────────────────────────────── -->
 <div class="fppTableWrapper fppTableWrapperAsTable mb-3">
@@ -821,6 +860,35 @@ async function sledRestart() {
   }, 3000);
 }
 
+// ── Daemon log viewer ─────────────────────────────────────────────────────
+async function sledLoadLog() {
+  const pre = document.getElementById('sledLogOutput');
+  if (pre) pre.textContent = 'Loading…';
+  try {
+    const res = await fetch(sledUrl('trigger.php') + '&action=logtail&lines=60', { cache:'no-store' });
+    const j   = await res.json();
+    if (pre) {
+      if (!j.ok) {
+        pre.textContent = j.note || 'Log not available.';
+      } else {
+        pre.textContent = j.lines.length ? j.lines.join('\n') : '(log is empty)';
+        // Scroll to bottom
+        pre.scrollTop = pre.scrollHeight;
+      }
+    }
+  } catch(e) {
+    if (pre) pre.textContent = 'Failed to fetch log: ' + e;
+  }
+}
+
+function sledShowLog() {
+  const panel = document.getElementById('sledLogPanel');
+  if (!panel) return;
+  panel.style.display = '';
+  sledLoadLog();
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 // ── Populate FPP playlist autocomplete ───────────────────────────────────
 (async function sledLoadPlaylists() {
   try {
@@ -901,6 +969,9 @@ function sledToggle(id, enabled) {
     }
     msgEl.innerHTML = html;
     banner.classList.remove('d-none');
+
+    // Auto-open the log panel when daemon is down — helps diagnose startup crashes
+    if (daemonDown) sledShowLog();
   } catch(e) {
     // Network error — don't show banner, not worth alarming the user
   }

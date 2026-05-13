@@ -53,15 +53,27 @@ CMD_QUEUE_FILE = "/home/fpp/media/logs/sled_trigger.cmd"
 PID_FILE       = "/home/fpp/media/logs/sled_daemon.pid"
 
 # ── Logging ────────────────────────────────────────────────────────────────────
-# Use FileHandler only — callbacks.sh redirects stdout to the same log file,
-# which would double every line if StreamHandler were also active.
+# Ensure the log directory exists BEFORE opening the FileHandler.
+# Without this the daemon dies silently if systemd starts it before
+# /home/fpp/media/logs is created (the FileNotFoundError is never logged).
+_LOG_DIR = os.path.dirname(LOG_FILE)
+try:
+    os.makedirs(_LOG_DIR, exist_ok=True)
+except OSError:
+    pass  # best effort; FileHandler fallback below handles the error case
+
+_log_handlers: list = []
+try:
+    _log_handlers.append(logging.FileHandler(LOG_FILE))
+except OSError:
+    # Fall back to stderr so there is *some* output (visible in systemd journal)
+    _log_handlers.append(logging.StreamHandler(sys.stderr))
+
 logging.basicConfig(
     level=logging.INFO,
     format="[%(asctime)s] [%(name)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
-    handlers=[
-        logging.FileHandler(LOG_FILE),
-    ],
+    handlers=_log_handlers,
 )
 log = logging.getLogger("sled")
 
@@ -157,8 +169,15 @@ class FPPPlayer:
 # =============================================================================
 
 def load_cfg() -> Dict[str, Any]:
-    with open(CONFIG_FILE) as f:
-        return json.load(f)
+    try:
+        with open(CONFIG_FILE) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        log.warning("Config file not found (%s) — using defaults", CONFIG_FILE)
+        return {}
+    except json.JSONDecodeError as exc:
+        log.error("Config file is invalid JSON (%s) — using defaults: %s", CONFIG_FILE, exc)
+        return {}
 
 
 def in_window(cfg: Dict[str, Any], now: Optional[dt.datetime] = None) -> bool:
@@ -385,7 +404,8 @@ def main() -> None:
         pins_cfg     = cfg.get("pins", {})
         letter_pin   = int(pins_cfg.get("letter", 17))
         donation_raw = pins_cfg.get("donation")
-        donation_pin = int(donation_raw) if donation_raw is not None else None
+        # Guard against None, empty string, or "null" saved from the UI
+        donation_pin = int(donation_raw) if donation_raw not in (None, "", "null") else None
         ins = GPIOInputs(letter_pin, donation_pin, cfg)
         log.info("Using GPIO inputs (letter=GPIO%d, donation=%s)",
                  letter_pin, f"GPIO{donation_pin}" if donation_pin else "none")
@@ -667,4 +687,15 @@ def _record_car(db: SledDB, ha: HAMqtt, friendly: str, label_tow: str, dir_seq: 
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as exc:
+        # Log the full traceback so it appears in SledMailbox.log rather than
+        # disappearing silently.  This catches any unhandled crash in main().
+        import traceback
+        msg = traceback.format_exc()
+        try:
+            log.critical("UNHANDLED EXCEPTION — daemon exiting:\n%s", msg)
+        except Exception:
+            sys.stderr.write(f"SLED daemon UNHANDLED EXCEPTION:\n{msg}\n")
+        sys.exit(1)

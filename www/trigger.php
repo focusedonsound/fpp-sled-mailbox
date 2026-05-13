@@ -177,6 +177,32 @@ switch ($action) {
     exit;
   }
 
+  // ── Daemon log tail (for in-UI diagnostics) ──────────────────────────────
+  case 'logtail': {
+    header('Content-Type: application/json; charset=utf-8');
+    $logFile = "/home/fpp/media/logs/SledMailbox.log";
+    $lines   = max(1, min(200, (int)($_GET['lines'] ?? 60)));
+    if (!file_exists($logFile)) {
+      echo json_encode(["ok" => false, "lines" => [], "note" => "Log file not found — daemon has not written any output yet."]);
+      exit;
+    }
+    // Read last $lines lines efficiently without loading the whole file
+    $out = [];
+    $fp  = fopen($logFile, "r");
+    if ($fp) {
+      // Use tail-like ring buffer
+      $buf = [];
+      while (($line = fgets($fp)) !== false) {
+        $buf[] = rtrim($line);
+        if (count($buf) > $lines) array_shift($buf);
+      }
+      fclose($fp);
+      $out = $buf;
+    }
+    echo json_encode(["ok" => true, "lines" => $out]);
+    exit;
+  }
+
   default:
     respond(false, "Unknown action: " . htmlspecialchars($action));
 }
