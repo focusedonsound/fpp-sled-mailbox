@@ -103,9 +103,14 @@ switch ($action) {
     // Check packages through both system Python and the vendor directory
     $pyserial = trim(shell_exec("python3 -c \"import sys; sys.path.insert(0,$vendorArg); import serial; print(serial.__version__)\" 2>&1") ?: "");
     $paho     = trim(shell_exec("python3 -c \"import sys; sys.path.insert(0,$vendorArg); import paho; print(paho.__version__)\" 2>&1") ?: "");
-    $mpv      = trim(shell_exec('which mpv 2>/dev/null || echo ""') ?: "");
     $usbDevs  = trim(shell_exec('ls /dev/ttyUSB* 2>/dev/null') ?: "none");
-    $daemonPid= trim(shell_exec('pgrep -f sled_daemon.py 2>/dev/null') ?: "not running");
+    // Daemon status: check PID file rather than pgrep (pgrep gave false positives)
+    $pidFile   = "/home/fpp/media/logs/sled_daemon.pid";
+    $daemonPid = "not running";
+    if (file_exists($pidFile)) {
+      $pid = trim(@file_get_contents($pidFile));
+      if ($pid && is_numeric($pid) && is_dir("/proc/$pid")) $daemonPid = $pid;
+    }
     $svcState = trim(shell_exec('systemctl is-active sled-mailbox 2>/dev/null') ?: "unknown");
     $whoami   = trim(shell_exec('whoami') ?: "");
     $installLog = file_exists('/tmp/SledMailbox_install.log')
@@ -117,7 +122,6 @@ switch ($action) {
       "user"        => $whoami,
       "pyserial"    => $pyserial ?: "NOT FOUND",
       "paho_mqtt"   => $paho ?: "NOT FOUND",
-      "mpv"         => $mpv ?: "NOT FOUND",
       "usb_devices" => $usbDevs,
       "daemon_pid"  => $daemonPid,
       "svc_state"   => $svcState,
@@ -131,21 +135,24 @@ switch ($action) {
     header('Content-Type: application/json; charset=utf-8');
     $vendorDir = realpath(dirname(__FILE__) . "/../scripts/vendor");
     $vendorArg = $vendorDir ? escapeshellarg($vendorDir) : "''";
-    $hasMpv     = (trim(shell_exec('which mpv 2>/dev/null') ?: "") !== "");
     $hasSerial  = (trim(shell_exec("python3 -c \"import sys; sys.path.insert(0,$vendorArg); import serial\" 2>&1") ?: "") === "");
-    $hasDaemon  = (trim(shell_exec('pgrep -f sled_daemon.py 2>/dev/null') ?: "") !== "");
+    // Daemon status: check PID file rather than pgrep (pgrep gave false positives)
+    $pidFile   = "/home/fpp/media/logs/sled_daemon.pid";
+    $hasDaemon = false;
+    if (file_exists($pidFile)) {
+      $pid = trim(@file_get_contents($pidFile));
+      if ($pid && is_numeric($pid) && is_dir("/proc/$pid")) $hasDaemon = true;
+    }
 
     $missing = [];
-    if (!$hasMpv)    $missing[] = "mpv";
     if (!$hasSerial) $missing[] = "python3-serial";
 
     echo json_encode([
-      "ok"          => (count($missing) === 0),
-      "daemon_up"   => $hasDaemon,
-      "mpv"         => $hasMpv,
-      "pyserial"    => $hasSerial,
-      "missing"     => $missing,
-      "fix_cmd"     => count($missing) > 0
+      "ok"        => (count($missing) === 0),
+      "daemon_up" => $hasDaemon,
+      "pyserial"  => $hasSerial,
+      "missing"   => $missing,
+      "fix_cmd"   => count($missing) > 0
           ? "sudo apt-get install -y " . implode(" ", $missing)
           : "",
     ]);

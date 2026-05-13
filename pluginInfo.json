@@ -14,7 +14,7 @@
       "branch": "main",
       "sha": "",
       "dependencies": {
-        "packages": ["python3-serial", "python3-paho-mqtt", "mpv", "python3-gpiozero"]
+        "packages": ["python3-serial", "python3-paho-mqtt", "python3-gpiozero"]
       }
     },
     {
@@ -23,7 +23,7 @@
       "branch": "main",
       "sha": "",
       "dependencies": {
-        "packages": ["python3-serial", "python3-paho-mqtt", "mpv", "python3-gpiozero"]
+        "packages": ["python3-serial", "python3-paho-mqtt", "python3-gpiozero"]
       }
     },
     {
@@ -32,7 +32,7 @@
       "branch": "main",
       "sha": "",
       "dependencies": {
-        "packages": ["python3-serial", "python3-paho-mqtt", "mpv", "python3-gpiozero"]
+        "packages": ["python3-serial", "python3-paho-mqtt", "python3-gpiozero"]
       }
     }
   ]

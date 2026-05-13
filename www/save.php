@@ -35,11 +35,11 @@ if (file_exists($configFile)) {
   if (is_array($j)) $cfg = $j;
 }
 
-// ── Video ─────────────────────────────────────────────────────────────────
-$cfg["video"]["idle"]           = pStr("video_idle");
-$cfg["video"]["letter_clips"]   = pClips("letter_clip");
-$cfg["video"]["donation_clips"] = pClips("donation_clip");
-$cfg["video"]["play_timeout_s"] = pInt("play_timeout_s", 65);
+// ── FPP Playlists ─────────────────────────────────────────────────────────
+$cfg["playlists"]["idle"]           = pStr("pl_idle", "sled_idle");
+$cfg["playlists"]["letter"]         = pClips("letter_pl");
+$cfg["playlists"]["donation"]       = pClips("donation_pl");
+$cfg["playlists"]["play_timeout_s"] = pInt("play_timeout_s", 120);
 
 // ── Pins + cooldowns ──────────────────────────────────────────────────────
 $pinLetter   = pStr("pin_letter");

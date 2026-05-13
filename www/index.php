@@ -4,12 +4,12 @@ $configFile = "/home/fpp/media/config/sled.json";
 // ── Defaults ──────────────────────────────────────────────────────────────
 function defaultCfg() {
   return [
-    "enabled"  => true,
-    "video"    => [
-      "idle"           => "",
-      "letter_clips"   => [],
-      "donation_clips" => [],
-      "play_timeout_s" => 65,
+    "enabled"   => true,
+    "playlists" => [
+      "idle"          => "sled_idle",
+      "letter"        => ["sled_letter"],
+      "donation"      => [],
+      "play_timeout_s"=> 120,
     ],
     "pins"      => ["letter" => 17, "donation" => ""],
     "letter"    => ["cooldown_s" => 3.0],
@@ -32,7 +32,6 @@ function defaultCfg() {
       "direction_window_s" => 10.0,
     ],
     "mqtt"      => ["enabled" => false, "base" => "sled", "device_name" => "SLED Santa Mailbox"],
-    "paths"     => ["videos" => "/home/fpp/media/videos"],
     "telemetry" => ["opt_in" => true, "install_id" => ""],
   ];
 }
@@ -55,10 +54,6 @@ function loadConfig($path) {
   return $cfg;
 }
 
-function clipsToStr($arr) {
-  return is_array($arr) ? implode(', ', $arr) : (string)$arr;
-}
-
 // ── Daemon status (graceful — posix may not be available) ─────────────────
 function daemonRunning() {
   $pidFile = "/home/fpp/media/logs/sled_daemon.pid";
@@ -70,30 +65,8 @@ function daemonRunning() {
   return is_dir("/proc/$pid");
 }
 
-// ── FPP media file list ───────────────────────────────────────────────────
-function listMedia() {
-  $dirs = [
-    "/home/fpp/media/videos",
-  ];
-  $out = [];
-  foreach ($dirs as $d) {
-    if (!is_dir($d)) continue;
-    $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($d));
-    foreach ($it as $f) {
-      if ($f->isDir()) continue;
-      if (preg_match('/\.(mp4|mkv|avi|mov|wmv|flv|webm)$/i', $f->getPathname())) {
-        $rel = str_replace(["/home/fpp/media/videos/", "/home/fpp/media/music/"], "", $f->getPathname());
-        $out[] = $rel;
-      }
-    }
-  }
-  sort($out);
-  return $out;
-}
-
 $cfg         = loadConfig($configFile);
 $running     = daemonRunning();
-$mediaFiles  = listMedia();
 $serialPorts = listSerialPorts();
 ?>
 
@@ -129,131 +102,120 @@ $serialPorts = listSerialPorts();
 </div>
 
 <p class="text-muted">
-  Configure video clips for letter and donation events. Wire sensor GPIO pins to
-  <strong>FPP Commands</strong> using FPP&rsquo;s built-in GPIO plugin &mdash;
+  Configure FPP playlists for letter and donation events. Video playback is handled
+  natively by FPP &mdash; create your playlists in <strong>Content Setup &rarr; Playlists</strong>,
+  then enter their names here. Wire sensor GPIO pins to <strong>FPP Commands</strong>
+  using FPP&rsquo;s built-in GPIO plugin &mdash;
   <em>SLED &ndash; Trigger Letter</em> and <em>SLED &ndash; Trigger Donation</em>.
 </p>
 
+<!-- Playlist name autocomplete populated by JS from /api/playlists -->
+<datalist id="fppPlaylists"></datalist>
+
 <form id="sledForm" onsubmit="return false;">
 
-  <!-- ── Video Clips ──────────────────────────────────────────────────── -->
+  <!-- ── FPP Playlists ─────────────────────────────────────────────────── -->
   <div class="fppTableWrapper fppTableWrapperAsTable mb-3">
     <div class="fppTableContents fppFThScrollContainer">
       <table class="fppSelectableRowTable fppStickyTheadTable" style="width:100%;">
         <thead>
           <tr>
             <th colspan="2" style="padding:8px;">
-              <i class="fas fa-fw fa-film"></i> Video Clips
+              <i class="fas fa-fw fa-list-ol"></i> FPP Playlists
               <span class="text-muted fw-normal small ms-2">
-                Select from FPP media files &mdash; multiple clips play in round-robin order
+                Enter FPP playlist names &mdash; multiple playlists play in round-robin order
               </span>
             </th>
           </tr>
         </thead>
         <tbody>
 
-          <!-- Idle Video -->
+          <!-- Idle Playlist -->
           <tr>
             <td style="width:220px; padding:8px;">
-              <label class="mb-0"><i class="fas fa-fw fa-rotate"></i> Idle Loop (Screen Saver)</label>
-              <div class="text-muted small">Loops continuously during the active schedule window</div>
+              <label class="mb-0"><i class="fas fa-fw fa-rotate"></i> Idle Playlist</label>
+              <div class="text-muted small">Loops during the active schedule window</div>
             </td>
             <td style="padding:8px;">
-              <select name="video_idle" class="form-control form-control-sm">
-                <option value="">-- none --</option>
-                <?php foreach ($mediaFiles as $f): ?>
-                  <option value="<?php echo htmlspecialchars($f); ?>"
-                    <?php echo ($cfg['video']['idle'] === $f) ? 'selected' : ''; ?>>
-                    <?php echo htmlspecialchars($f); ?>
-                  </option>
-                <?php endforeach; ?>
-              </select>
+              <input type="text" class="form-control form-control-sm" name="pl_idle"
+                     list="fppPlaylists" placeholder="sled_idle"
+                     value="<?php echo htmlspecialchars($cfg['playlists']['idle'] ?? 'sled_idle'); ?>" />
             </td>
           </tr>
 
-          <!-- Letter Clips -->
+          <!-- Letter Playlists -->
           <tr>
             <td style="padding:8px;">
-              <label class="mb-0"><i class="fas fa-fw fa-envelope"></i> Letter Clips</label>
-              <div class="text-muted small">Played in order when a letter drops</div>
+              <label class="mb-0"><i class="fas fa-fw fa-envelope"></i> Letter Playlists</label>
+              <div class="text-muted small">Played in round-robin when a letter drops</div>
             </td>
             <td style="padding:8px;">
-              <div id="letterClipList">
+              <div id="letterPlList">
                 <?php
-                $letterClips = $cfg['video']['letter_clips'];
-                if (empty($letterClips)) $letterClips = [''];
-                foreach ($letterClips as $idx => $clip): ?>
-                <div class="d-flex gap-2 mb-1 clip-row" data-type="letter">
-                  <select name="letter_clip[]" class="form-control form-control-sm">
-                    <option value="">-- none --</option>
-                    <?php foreach ($mediaFiles as $f): ?>
-                      <option value="<?php echo htmlspecialchars($f); ?>"
-                        <?php echo ($clip === $f) ? 'selected' : ''; ?>>
-                        <?php echo htmlspecialchars($f); ?>
-                      </option>
-                    <?php endforeach; ?>
-                  </select>
+                $letterPls = $cfg['playlists']['letter'] ?? ['sled_letter'];
+                if (is_string($letterPls)) $letterPls = [$letterPls];
+                if (empty($letterPls)) $letterPls = [''];
+                foreach ($letterPls as $pl): ?>
+                <div class="d-flex gap-2 mb-1 pl-row" data-type="letter">
+                  <input type="text" class="form-control form-control-sm" name="letter_pl[]"
+                         list="fppPlaylists" placeholder="sled_letter"
+                         value="<?php echo htmlspecialchars($pl); ?>" />
                   <button type="button" class="buttons btn-outline-light btn-sm"
-                          onclick="sledRemoveClip(this)" title="Remove">
+                          onclick="sledRemovePl(this)" title="Remove">
                     <i class="fas fa-fw fa-trash"></i>
                   </button>
                 </div>
                 <?php endforeach; ?>
               </div>
               <button type="button" class="buttons btn-outline-light btn-sm mt-1"
-                      onclick="sledAddClip('letter')">
-                <i class="fas fa-fw fa-plus"></i> Add Clip
+                      onclick="sledAddPl('letter')">
+                <i class="fas fa-fw fa-plus"></i> Add Playlist
               </button>
             </td>
           </tr>
 
-          <!-- Donation Clips -->
+          <!-- Donation Playlists -->
           <tr>
             <td style="padding:8px;">
-              <label class="mb-0"><i class="fas fa-fw fa-gift"></i> Donation Clips</label>
-              <div class="text-muted small">Leave empty to reuse letter clips</div>
+              <label class="mb-0"><i class="fas fa-fw fa-gift"></i> Donation Playlists</label>
+              <div class="text-muted small">Leave empty to reuse letter playlists</div>
             </td>
             <td style="padding:8px;">
-              <div id="donationClipList">
+              <div id="donationPlList">
                 <?php
-                $donationClips = $cfg['video']['donation_clips'];
-                if (empty($donationClips)) $donationClips = [''];
-                foreach ($donationClips as $idx => $clip): ?>
-                <div class="d-flex gap-2 mb-1 clip-row" data-type="donation">
-                  <select name="donation_clip[]" class="form-control form-control-sm">
-                    <option value="">-- none --</option>
-                    <?php foreach ($mediaFiles as $f): ?>
-                      <option value="<?php echo htmlspecialchars($f); ?>"
-                        <?php echo ($clip === $f) ? 'selected' : ''; ?>>
-                        <?php echo htmlspecialchars($f); ?>
-                      </option>
-                    <?php endforeach; ?>
-                  </select>
+                $donationPls = $cfg['playlists']['donation'] ?? [];
+                if (is_string($donationPls)) $donationPls = [$donationPls];
+                if (empty($donationPls)) $donationPls = [''];
+                foreach ($donationPls as $pl): ?>
+                <div class="d-flex gap-2 mb-1 pl-row" data-type="donation">
+                  <input type="text" class="form-control form-control-sm" name="donation_pl[]"
+                         list="fppPlaylists" placeholder="sled_donation (or leave blank)"
+                         value="<?php echo htmlspecialchars($pl); ?>" />
                   <button type="button" class="buttons btn-outline-light btn-sm"
-                          onclick="sledRemoveClip(this)" title="Remove">
+                          onclick="sledRemovePl(this)" title="Remove">
                     <i class="fas fa-fw fa-trash"></i>
                   </button>
                 </div>
                 <?php endforeach; ?>
               </div>
               <button type="button" class="buttons btn-outline-light btn-sm mt-1"
-                      onclick="sledAddClip('donation')">
-                <i class="fas fa-fw fa-plus"></i> Add Clip
+                      onclick="sledAddPl('donation')">
+                <i class="fas fa-fw fa-plus"></i> Add Playlist
               </button>
             </td>
           </tr>
 
-          <!-- Clip timeout -->
+          <!-- Playlist timeout -->
           <tr>
             <td style="padding:8px;">
-              <label class="mb-0"><i class="fas fa-fw fa-hourglass-half"></i> Clip Timeout</label>
-              <div class="text-muted small">Max seconds before force-stop</div>
+              <label class="mb-0"><i class="fas fa-fw fa-hourglass-half"></i> Playlist Timeout</label>
+              <div class="text-muted small">Max seconds to wait for playlist to finish</div>
             </td>
             <td style="padding:8px;">
               <div class="input-group input-group-sm" style="max-width:160px;">
                 <input type="number" class="form-control form-control-sm" name="play_timeout_s"
-                       min="5" max="300" step="1"
-                       value="<?php echo (int)$cfg['video']['play_timeout_s']; ?>" />
+                       min="5" max="600" step="1"
+                       value="<?php echo (int)($cfg['playlists']['play_timeout_s'] ?? 120); ?>" />
                 <span class="input-group-text">sec</span>
               </div>
             </td>
@@ -341,7 +303,7 @@ $serialPorts = listSerialPorts();
           <tr>
             <th colspan="4" style="padding:8px;">
               <i class="fas fa-fw fa-clock"></i> Idle Schedule
-              <span class="text-muted fw-normal small ms-2">Screen Saver active window &mdash; events will play outside this window too. Screen will be blank prior to event (energy saver mode)</span>
+              <span class="text-muted fw-normal small ms-2">Idle playlist active window &mdash; events trigger outside this window too; idle playlist is stopped when outside the window</span>
             </th>
           </tr>
         </thead>
@@ -754,30 +716,45 @@ async function sledTrigger(kind) {
   sledNotify(j.message || (j.status==='OK' ? 'Triggered.' : 'Failed.'), j.status !== 'OK');
 }
 
-// ── Dynamic clip rows ─────────────────────────────────────────────────────
-const MEDIA_OPTIONS = <?php echo json_encode(array_map('htmlspecialchars', $mediaFiles)); ?>;
+// ── Populate FPP playlist autocomplete ───────────────────────────────────
+(async function sledLoadPlaylists() {
+  try {
+    const res  = await fetch('/api/playlists', { cache: 'no-store' });
+    const data = await res.json();
+    const dl   = document.getElementById('fppPlaylists');
+    if (!dl) return;
+    // /api/playlists returns an array of playlist names (strings)
+    const names = Array.isArray(data) ? data : (data.playlists || []);
+    names.forEach(n => {
+      const name = typeof n === 'string' ? n : (n.name || n.playlist || '');
+      if (!name) return;
+      const opt = document.createElement('option');
+      opt.value = name;
+      dl.appendChild(opt);
+    });
+  } catch(e) { /* not critical — text input still works */ }
+})();
 
-function sledAddClip(type) {
-  const listId = type === 'letter' ? 'letterClipList' : 'donationClipList';
+// ── Dynamic playlist rows ─────────────────────────────────────────────────
+function sledAddPl(type) {
+  const listId = type === 'letter' ? 'letterPlList' : 'donationPlList';
   const list   = document.getElementById(listId);
   const div    = document.createElement('div');
-  div.className = 'd-flex gap-2 mb-1 clip-row';
+  div.className = 'd-flex gap-2 mb-1 pl-row';
   div.dataset.type = type;
-
-  let opts = '<option value="">-- none --</option>';
-  MEDIA_OPTIONS.forEach(f => { opts += `<option value="${f}">${f}</option>`; });
-
+  const ph = type === 'letter' ? 'sled_letter' : 'sled_donation (or leave blank)';
   div.innerHTML = `
-    <select name="${type}_clip[]" class="form-control form-control-sm">${opts}</select>
+    <input type="text" class="form-control form-control-sm" name="${type}_pl[]"
+           list="fppPlaylists" placeholder="${ph}" />
     <button type="button" class="buttons btn-outline-light btn-sm"
-            onclick="sledRemoveClip(this)" title="Remove">
+            onclick="sledRemovePl(this)" title="Remove">
       <i class="fas fa-fw fa-trash"></i>
     </button>`;
   list.appendChild(div);
 }
 
-function sledRemoveClip(btn) {
-  const row = btn.closest('.clip-row');
+function sledRemovePl(btn) {
+  const row = btn.closest('.pl-row');
   if (row) row.remove();
 }
 
@@ -799,8 +776,7 @@ function sledToggle(id, enabled) {
     if (!banner || !msgEl) return;
 
     const items = [];
-    if (!j.mpv)      items.push('<strong>mpv</strong> (video playback)');
-    if (!j.pyserial) items.push('<strong>python3-serial</strong> (radar/USB communication)');
+    if (!j.pyserial)  items.push('<strong>python3-serial</strong> (radar/USB communication)');
     if (!j.daemon_up) items.push('<em>SLED daemon is not running</em>');
 
     let html = 'The following are missing: ' + items.join(', ') + '.';

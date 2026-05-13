@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 # =============================================================================
-# sled_daemon.py — SLED Santa Mailbox main daemon (FPP plugin edition)
+# sled_daemon.py — SLED Santa Mailbox daemon (FPP plugin edition)
+#
+# Architecture: this daemon handles only what FPP cannot do natively:
+#   • LD2410 radar serial I/O and car-detection state machine
+#   • GPIO letter / donation sensors
+#   • MQTT telemetry (Home Assistant discovery)
+#   • SQLite event/counter persistence
+#
+# Video playback is delegated entirely to FPP via its local REST API.
+# The daemon tells FPP which playlist to start; FPP owns the screen.
 # =============================================================================
 
 from __future__ import annotations
@@ -9,21 +18,21 @@ import json
 import logging
 import os
 import signal
-import subprocess
 import sys
 import time
 import threading
 import datetime as dt
-from typing import Any, Dict, Optional
+import urllib.request
+import urllib.parse
+from typing import Any, Dict, List, Optional
 
-# ── Ensure our scripts/ dir and vendor dir are importable ─────────────────
+# ── Ensure our scripts/ dir and vendor dir are importable ─────────────────────
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _VENDOR_DIR  = os.path.join(_SCRIPT_DIR, "vendor")
 sys.path.insert(0, _SCRIPT_DIR)
 if os.path.isdir(_VENDOR_DIR):
     sys.path.insert(0, _VENDOR_DIR)
 
-from playback import Player
 from ha import HAMqtt
 from sensors import MockInputs, GPIOInputs
 from sled_db import SledDB
@@ -37,13 +46,13 @@ try:
 except ImportError:
     DHT_AVAILABLE = False
 
-# ── Paths ──────────────────────────────────────────────────────────────────
+# ── Paths ──────────────────────────────────────────────────────────────────────
 CONFIG_FILE    = "/home/fpp/media/config/sled.json"
 LOG_FILE       = "/home/fpp/media/logs/SledMailbox.log"
 CMD_QUEUE_FILE = "/home/fpp/media/logs/sled_trigger.cmd"
 PID_FILE       = "/home/fpp/media/logs/sled_daemon.pid"
 
-# ── Logging ────────────────────────────────────────────────────────────────
+# ── Logging ────────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="[%(asctime)s] [%(name)s] %(message)s",
@@ -54,6 +63,93 @@ logging.basicConfig(
     ],
 )
 log = logging.getLogger("sled")
+
+
+# =============================================================================
+# FPP Player — thin wrapper around FPP's local REST API
+# =============================================================================
+
+class FPPPlayer:
+    """
+    Controls FPP's built-in media player via the local REST API.
+    All methods are silent on error — the daemon never dies because FPP is
+    slow or restarting.
+    """
+
+    _API = "http://localhost"
+
+    def _cmd(self, command: str, args: List[str] = None) -> Optional[dict]:
+        """POST an FPP command to the local API."""
+        try:
+            url  = f"{self._API}/api/command/{urllib.parse.quote(command)}"
+            body = json.dumps({"args": [str(a) for a in (args or [])]}).encode()
+            req  = urllib.request.Request(
+                url, data=body,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=3) as r:
+                return json.loads(r.read())
+        except Exception as exc:
+            log.debug("[FPP] command %r failed: %s", command, exc)
+            return None
+
+    def _status(self) -> Optional[dict]:
+        """GET FPP's current status."""
+        try:
+            with urllib.request.urlopen(f"{self._API}/api/fppd/status", timeout=3) as r:
+                return json.loads(r.read())
+        except Exception as exc:
+            log.debug("[FPP] status check failed: %s", exc)
+            return None
+
+    def current_playlist(self) -> str:
+        """Return the name of the currently-playing FPP playlist, or ''."""
+        status = self._status()
+        if not status:
+            return ""
+        return status.get("current_playlist", {}).get("playlist", "")
+
+    def start_playlist(self, name: str) -> None:
+        """Start a named FPP playlist (non-blocking)."""
+        if not name:
+            return
+        log.info("[FPP] start playlist: %s", name)
+        self._cmd("Start Playlist At Item", [name, "1", "false", "false", "false"])
+
+    def stop(self) -> None:
+        """Stop FPP playback immediately."""
+        log.info("[FPP] stop")
+        self._cmd("Stop Now")
+
+    def play_once(self, name: str, timeout_s: int = 120) -> None:
+        """
+        Start a playlist and block until it finishes (or timeout/shutdown).
+        Polls FPP status every 0.5 s.  After the playlist ends (or on timeout)
+        control returns to the caller, which decides whether to restart idle.
+        """
+        if not name:
+            return
+        self.start_playlist(name)
+
+        # Wait up to 2 s for FPP to actually begin the playlist
+        t0 = time.time()
+        while time.time() - t0 < 2.0 and not _shutdown.is_set():
+            if self.current_playlist() == name:
+                break
+            time.sleep(0.2)
+
+        # Now wait for it to finish
+        deadline = time.time() + timeout_s
+        while time.time() < deadline and not _shutdown.is_set():
+            if self.current_playlist() != name:
+                return          # playlist ended normally
+            time.sleep(0.5)
+
+        # Timeout — stop gracefully so we don't get stuck
+        if self.current_playlist() == name:
+            log.warning("[FPP] play_once timeout for %r — stopping", name)
+            self.stop()
 
 
 # =============================================================================
@@ -76,43 +172,7 @@ def in_window(cfg: Dict[str, Any], now: Optional[dt.datetime] = None) -> bool:
 
 
 # =============================================================================
-# Screen power management
-# =============================================================================
-
-_kmsblank_proc: Optional[subprocess.Popen] = None
-
-
-def screen_off() -> None:
-    global _kmsblank_proc
-    if _kmsblank_proc is not None and _kmsblank_proc.poll() is None:
-        return
-    try:
-        _kmsblank_proc = subprocess.Popen(
-            ["kmsblank"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
-        log.info("[Screen] HDMI OFF (kmsblank)")
-    except FileNotFoundError:
-        _kmsblank_proc = None
-
-
-def screen_on() -> None:
-    global _kmsblank_proc
-    if _kmsblank_proc is None:
-        return
-    if _kmsblank_proc.poll() is not None:
-        _kmsblank_proc = None
-        return
-    _kmsblank_proc.terminate()
-    try:
-        _kmsblank_proc.wait(timeout=2)
-    except subprocess.TimeoutExpired:
-        _kmsblank_proc.kill()
-    _kmsblank_proc = None
-    log.info("[Screen] HDMI ON")
-
-
-# =============================================================================
-# DHT11 background thread
+# DHT11 background thread (optional)
 # =============================================================================
 
 def start_dht_thread(cfg: Dict[str, Any], ha: HAMqtt) -> None:
@@ -152,24 +212,22 @@ def start_dht_thread(cfg: Dict[str, Any], ha: HAMqtt) -> None:
 
 
 # =============================================================================
-# Command queue  (FPP Commands → daemon IPC)
+# Command queue  (trigger.php → daemon IPC)
 # =============================================================================
 
 def poll_cmd_queue() -> Optional[str]:
     """
-    Check CMD_QUEUE_FILE for a pending command.
-    Returns the command string and removes the file, or None.
+    Check CMD_QUEUE_FILE for a pending command written by trigger.php.
+    Returns the command string (consuming the file), or None.
 
-    Supported commands:
-      letter         — trigger letter event
-      donation       — trigger donation event
+    Commands:
+      letter         — inject letter event
+      donation       — inject donation event
       stop           — shut daemon down
       cleanup        — remove HA discovery entities
-      diag_start_a   — enter diagnostic mode for Radar A
-      diag_start_b   — enter diagnostic mode for Radar B
-      diag_stop      — exit diagnostic mode (both radars)
-      diag_set_a:<j> — write JSON config to Radar A
-      diag_set_b:<j> — write JSON config to Radar B
+      diag_start_a/b — enter radar diagnostic mode
+      diag_stop      — exit radar diagnostic mode
+      diag_set_a/b:  — write radar config JSON
     """
     if not os.path.isfile(CMD_QUEUE_FILE):
         return None
@@ -205,34 +263,27 @@ signal.signal(signal.SIGINT,  _handle_signal)
 
 class ParkedState:
     """
-    Tracks how long a radar has been continuously reporting presence.
-    When presence has been continuous for >= timeout_s, the radar is
-    considered "parked" — further car events are suppressed until the
-    car leaves and a new rising edge is detected.
+    Tracks continuous radar presence. Once presence exceeds parked_timeout_s
+    the radar is considered 'parked' and further car events are suppressed
+    until the car leaves and a new rising edge arrives.
     """
 
     def __init__(self, side: str, timeout_s: float) -> None:
-        self.side        = side
-        self.timeout_s   = float(timeout_s)
-        self._parked     = False
-        self._since: Optional[float] = None    # timestamp of last rising edge
+        self.side      = side
+        self.timeout_s = float(timeout_s)
+        self._parked   = False
+        self._since: Optional[float] = None
 
     def on_presence(self, now: float) -> None:
-        """Call when radar A/B emits its event code (rising edge)."""
         if self._since is None:
             self._since = now
         self._parked = False
 
     def on_absence(self, now: float) -> None:
-        """Call when radar A/B emits its _off event (falling edge)."""
         self._since  = None
         self._parked = False
 
     def tick(self, now: float, db: SledDB) -> None:
-        """
-        Call every main loop iteration.
-        Transitions to parked state when presence is continuous long enough.
-        """
         if self._since is None or self._parked:
             return
         if (now - self._since) >= self.timeout_s:
@@ -246,7 +297,6 @@ class ParkedState:
         return self._parked
 
     def allow_trigger(self) -> bool:
-        """Returns True if a new car event may be triggered from this radar."""
         return not self._parked
 
 
@@ -265,7 +315,7 @@ def main() -> None:
         log.info("Plugin disabled in config — exiting")
         return
 
-    # ── Direction config ───────────────────────────────────────────────────
+    # ── Direction config ───────────────────────────────────────────────────────
     dir_cfg    = cfg.get("direction", {})
     toward_ref = (dir_cfg.get("toward_reference") or "AB").upper()
     label_tow  = dir_cfg.get("label_toward", "Inbound")
@@ -274,10 +324,8 @@ def main() -> None:
     def label_for(seq: str) -> str:
         return label_tow if seq == toward_ref else label_away
 
-    # ── Timings ────────────────────────────────────────────────────────────
+    # ── Timings ────────────────────────────────────────────────────────────────
     car_cfg          = cfg.get("car", {})
-    # direction_window: max seconds between Radar A and B triggers that
-    # count as the same car.  Stored as sequence_window_s for compat.
     seq_window_s     = float(car_cfg.get("direction_window_s",
                              car_cfg.get("sequence_window_s", 10.0)))
     car_cooldown_s   = float(car_cfg.get("cooldown_s", 1.5))
@@ -288,20 +336,26 @@ def main() -> None:
     letter_cd_s   = float(cfg.get("letter",   {}).get("cooldown_s", 3.0))
     donation_cd_s = float(cfg.get("donation", {}).get("cooldown_s", 5.0))
 
-    # ── Video config ───────────────────────────────────────────────────────
-    video_cfg    = cfg.get("video", {})
-    video_dir    = cfg.get("paths", {}).get("videos", "/home/fpp/media/videos")
-    idle_name    = video_cfg.get("idle", "idle.mp4")
-    letter_clips = video_cfg.get("letter_clips", [])
-    donate_clips = video_cfg.get("donation_clips", [])
-    clip_timeout = int(video_cfg.get("play_timeout_s", 65))
+    # ── Playlist config ────────────────────────────────────────────────────────
+    pl_cfg       = cfg.get("playlists", {})
+    pl_idle      = pl_cfg.get("idle",     "sled_idle")
+    pl_letters   = pl_cfg.get("letter",   ["sled_letter"])
+    pl_donations = pl_cfg.get("donation", [])
+    pl_timeout   = int(pl_cfg.get("play_timeout_s", 120))
 
-    # ── Subsystems ─────────────────────────────────────────────────────────
-    player = Player(video_dir)
-    ha     = HAMqtt(cfg)
-    db     = SledDB()
+    # Normalise to lists
+    if isinstance(pl_letters,   str): pl_letters   = [pl_letters]
+    if isinstance(pl_donations, str): pl_donations = [pl_donations]
 
-    # ── Telemetry (non-blocking background thread) ─────────────────────────
+    # Fallback: donation uses letter playlist if none configured
+    if not pl_donations:
+        pl_donations = pl_letters[:1]
+
+    # ── Subsystems ─────────────────────────────────────────────────────────────
+    fpp = FPPPlayer()
+    ha  = HAMqtt(cfg)
+    db  = SledDB()
+
     telemetry = SledTelemetry(cfg, db)
     telemetry.start()
 
@@ -321,7 +375,7 @@ def main() -> None:
     ha.set_letter_today(letter_today_count)
     ha.set_donation_today(donation_today_count)
 
-    # ── Sensors ────────────────────────────────────────────────────────────
+    # ── Sensors ────────────────────────────────────────────────────────────────
     debug_cfg = cfg.get("debug", {})
     use_mock  = bool(debug_cfg.get("use_mock_inputs", False))
     if use_mock:
@@ -336,31 +390,25 @@ def main() -> None:
         log.info("Using GPIO inputs (letter=GPIO%d, donation=%s)",
                  letter_pin, f"GPIO{donation_pin}" if donation_pin else "none")
 
-    # ── FSM / timing state ─────────────────────────────────────────────────
+    # ── FSM / timing state ─────────────────────────────────────────────────────
     tA: Optional[float] = None
     tB: Optional[float] = None
-    last_car_time: float = 0.0
-
+    last_car_time:      float = 0.0
     last_letter_time:   float = 0.0
     last_donation_time: float = 0.0
+    next_letter_idx:    int   = 0
+    next_donation_idx:  int   = 0
+    last_sched_check:   float = 0.0
+    sched_inside:       Optional[bool] = None
 
-    next_letter_idx:   int = 0
-    next_donation_idx: int = 0
-
-    last_sched_check: float = 0.0
-    sched_inside:     Optional[bool] = None
-
-    # Parked-car trackers
     parked_a = ParkedState("A", parked_timeout_s)
     parked_b = ParkedState("B", parked_timeout_s)
 
-    # Initial screen state
+    # ── Initial playback state ─────────────────────────────────────────────────
     if in_window(cfg):
-        screen_on()
-        player.start_idle(idle_name)
+        fpp.start_playlist(pl_idle)
     else:
-        player.stop_idle()
-        screen_off()
+        fpp.stop()
 
     log.info("SLED daemon running (PID=%d)", os.getpid())
 
@@ -368,7 +416,7 @@ def main() -> None:
         while not _shutdown.is_set():
             now_ts = time.time()
 
-            # ── Midnight reset ─────────────────────────────────────────────
+            # ── Midnight reset ─────────────────────────────────────────────────
             if db.check_midnight_reset():
                 log.info("Midnight reset: today counters cleared")
                 letter_today_count   = 0
@@ -379,26 +427,24 @@ def main() -> None:
                 ha.set_letter_today(0)
                 ha.set_donation_today(0)
 
-            # ── Schedule tick (every ~5 s) ─────────────────────────────────
+            # ── Schedule tick (every ~5 s) ─────────────────────────────────────
             if now_ts - last_sched_check >= 5.0:
                 last_sched_check = now_ts
                 now_inside = in_window(cfg)
                 if now_inside != sched_inside:
                     sched_inside = now_inside
                     if now_inside:
-                        screen_on()
-                        player.start_idle(idle_name)
+                        fpp.start_playlist(pl_idle)
                         log.info("[Schedule] Entered active window")
                     else:
-                        player.stop_idle()
-                        screen_off()
+                        fpp.stop()
                         log.info("[Schedule] Left active window")
 
-            # ── Parked-car timeout ticks ───────────────────────────────────
+            # ── Parked-car timeout ticks ───────────────────────────────────────
             parked_a.tick(now_ts, db)
             parked_b.tick(now_ts, db)
 
-            # ── Command queue ──────────────────────────────────────────────
+            # ── Command queue ──────────────────────────────────────────────────
             queued = poll_cmd_queue()
             if queued:
                 queued_lower = queued.lower()
@@ -418,7 +464,6 @@ def main() -> None:
                     log.info("[CmdQueue] CLEANUP — removing HA discovery entities")
                     ha.remove_discovery()
 
-                # ── Diagnostic mode commands ───────────────────────────────
                 elif queued_lower in ("diag_start_a", "diag_start_b"):
                     side   = "A" if queued_lower.endswith("_a") else "B"
                     reader = ins.get_reader(side) if hasattr(ins, "get_reader") else None
@@ -435,11 +480,10 @@ def main() -> None:
                             reader.set_diag_mode(False)
                     log.info("[Diag] Exited diagnostic mode")
 
-                elif queued_lower.startswith("diag_set_a:") or queued_lower.startswith("diag_set_b:"):
-                    side   = "A" if ":a:" in queued_lower.replace("diag_set_", "diag_set_x_") else "B"
-                    # Re-parse with original casing for the JSON payload
-                    prefix_len = len("diag_set_a:") if queued.lower().startswith("diag_set_a:") else len("diag_set_b:")
-                    side   = "A" if queued.lower().startswith("diag_set_a:") else "B"
+                elif (queued_lower.startswith("diag_set_a:")
+                      or queued_lower.startswith("diag_set_b:")):
+                    side       = "A" if queued.lower().startswith("diag_set_a:") else "B"
+                    prefix_len = len("diag_set_a:") if side == "A" else len("diag_set_b:")
                     try:
                         from sled_ld2410 import Ld2410Config
                         cfg_dict = json.loads(queued[prefix_len:])
@@ -453,7 +497,7 @@ def main() -> None:
                     except Exception as exc:
                         log.warning("[Diag] diag_set parse error: %s", exc)
 
-            # ── Poll hardware inputs ───────────────────────────────────────
+            # ── Poll hardware inputs ───────────────────────────────────────────
             ev = ins.get_event(timeout=0.1)
             if not ev:
                 continue
@@ -462,76 +506,69 @@ def main() -> None:
                 log.info("Quit via mock input")
                 break
 
-            # ── LETTER ────────────────────────────────────────────────────
+            # ── LETTER ────────────────────────────────────────────────────────
             if ev == "l":
                 if now_ts - last_letter_time < letter_cd_s:
                     log.debug("[Letter] Ignored duplicate (cooldown)")
                     continue
                 last_letter_time = now_ts
 
-                screen_on()
-                player.stop_idle()
-                clip = letter_clips[next_letter_idx % len(letter_clips)] if letter_clips else idle_name
+                pl = pl_letters[next_letter_idx % len(pl_letters)] if pl_letters else pl_idle
                 next_letter_idx += 1
-                log.info("[Letter] Playing %s", clip)
-                player.play_once(clip, timeout=clip_timeout)
+                log.info("[Letter] Playing playlist: %s", pl)
+
+                fpp.stop()
+                fpp.play_once(pl, timeout_s=pl_timeout)
 
                 now_iso = dt.datetime.now(dt.timezone.utc).astimezone().isoformat()
                 ha.pulse_letter()
                 ha.set_last_letter(now_iso)
-                ha.event("letter", {"clip": clip, "ts": now_iso})
+                ha.event("letter", {"playlist": pl, "ts": now_iso})
 
                 lt = db.increment_counter("letter_total")
                 letter_today_count += 1
                 ha.set_letter_total(lt)
                 ha.set_letter_today(letter_today_count)
-                db.log_event("letter", {"clip": clip})
+                db.log_event("letter", {"playlist": pl})
 
                 if in_window(cfg):
-                    player.start_idle(idle_name)
+                    fpp.start_playlist(pl_idle)
                 else:
-                    player.stop_idle()
-                    screen_off()
+                    fpp.stop()
                 continue
 
-            # ── DONATION ──────────────────────────────────────────────────
+            # ── DONATION ──────────────────────────────────────────────────────
             if ev == "d":
                 if now_ts - last_donation_time < donation_cd_s:
                     log.debug("[Donation] Ignored duplicate (cooldown)")
                     continue
                 last_donation_time = now_ts
 
-                screen_on()
-                player.stop_idle()
-                if donate_clips:
-                    clip = donate_clips[next_donation_idx % len(donate_clips)]
-                elif letter_clips:
-                    clip = letter_clips[0]
-                else:
-                    clip = idle_name
+                pl = pl_donations[next_donation_idx % len(pl_donations)] if pl_donations else pl_idle
                 next_donation_idx += 1
-                log.info("[Donation] Playing %s", clip)
-                player.play_once(clip, timeout=clip_timeout)
+                log.info("[Donation] Playing playlist: %s", pl)
+
+                fpp.stop()
+                fpp.play_once(pl, timeout_s=pl_timeout)
 
                 now_iso = dt.datetime.now(dt.timezone.utc).astimezone().isoformat()
                 ha.pulse_donation()
                 ha.set_last_donation(now_iso)
-                ha.event("donation", {"clip": clip, "ts": now_iso})
+                ha.event("donation", {"playlist": pl, "ts": now_iso})
 
                 dt_ = db.increment_counter("donation_total")
                 donation_today_count += 1
                 ha.set_donation_total(dt_)
                 ha.set_donation_today(donation_today_count)
-                db.log_event("donation", {"clip": clip})
+                db.log_event("donation", {"playlist": pl})
 
                 if in_window(cfg):
-                    player.start_idle(idle_name)
+                    fpp.start_playlist(pl_idle)
                 else:
-                    player.stop_idle()
-                    screen_off()
+                    fpp.stop()
                 continue
 
-            # ── RADAR A  ──────────────────────────────────────────────────
+            # ── RADAR A ───────────────────────────────────────────────────────
             if ev == "a":
                 parked_a.on_presence(now_ts)
                 tA = now_ts
@@ -547,7 +584,7 @@ def main() -> None:
                 parked_a.on_absence(now_ts)
                 continue
 
-            # ── RADAR B  ──────────────────────────────────────────────────
+            # ── RADAR B ───────────────────────────────────────────────────────
             if ev == "b":
                 parked_b.on_presence(now_ts)
                 tB = now_ts
@@ -566,8 +603,7 @@ def main() -> None:
     finally:
         log.info("SLED daemon shutting down...")
         telemetry.stop()
-        player.stop_idle()
-        screen_on()
+        fpp.stop()
         ha.close()
         db.close()
         try:

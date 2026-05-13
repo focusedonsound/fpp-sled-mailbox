@@ -20,7 +20,6 @@ log "=== SLED Santa Mailbox install started (user=$(whoami), uid=$(id -u)) ==="
 # Do this FIRST so the media log path is available.
 mkdir -p /home/fpp/media/logs
 mkdir -p /home/fpp/media/config
-mkdir -p /home/fpp/media/plugins/fpp-sled-mailbox/videos
 
 # Now that the dir exists, copy /tmp log into media log
 cat "$LOGFILE" >> "$MEDIA_LOG" 2>/dev/null || true
@@ -28,7 +27,6 @@ cat "$LOGFILE" >> "$MEDIA_LOG" 2>/dev/null || true
 # ── System packages ──────────────────────────────────────────────
 log "Installing system packages via apt-get..."
 if apt-get install -y --no-install-recommends \
-    mpv \
     python3-serial \
     python3-paho-mqtt \
     python3-gpiozero \
@@ -79,18 +77,15 @@ if [[ ! -f "$CONFIG" ]]; then
     cat > "$CONFIG" <<'JSONEOF'
 {
   "enabled": true,
-  "paths": {
-    "videos": "/home/fpp/media/plugins/fpp-sled-mailbox/videos"
+  "playlists": {
+    "idle": "sled_idle",
+    "letter": ["sled_letter"],
+    "donation": [],
+    "play_timeout_s": 120
   },
   "schedule": {
     "start": "16:00",
     "end": "22:00"
-  },
-  "video": {
-    "idle": "idle.mp4",
-    "letter_clips": [],
-    "donation_clips": [],
-    "play_timeout_s": 65
   },
   "pins": {
     "letter": 17,
@@ -98,7 +93,9 @@ if [[ ! -f "$CONFIG" ]]; then
   },
   "car": {
     "sequence_window_s": 0.8,
-    "cooldown_s": 1.5
+    "cooldown_s": 1.5,
+    "parked_timeout_s": 180,
+    "direction_window_s": 10.0
   },
   "letter": {
     "cooldown_s": 3.0
@@ -113,28 +110,17 @@ if [[ ! -f "$CONFIG" ]]; then
   },
   "ld2410": {
     "enabled": false,
-    "min_energy": 20,
     "A": {"port": "/dev/ttyUSB0", "min_energy": 20},
     "B": {"port": "/dev/ttyUSB1", "min_energy": 20}
   },
-  "dht11": {
-    "enabled": false,
-    "pin": 4,
-    "interval_s": 60
-  },
   "mqtt": {
-    "use_fpp_settings": true,
-    "host": "",
-    "port": 1883,
-    "username": "",
-    "password": "",
+    "enabled": false,
     "base": "sled",
-    "discovery": true,
-    "device_name": "SLED Santa Mailbox",
-    "device_id": "sled_mailbox"
+    "device_name": "SLED Santa Mailbox"
   },
-  "debug": {
-    "use_mock_inputs": false
+  "telemetry": {
+    "opt_in": true,
+    "install_id": ""
   }
 }
 JSONEOF
