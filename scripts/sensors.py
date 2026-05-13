@@ -21,10 +21,35 @@ import queue
 from typing import Any, Dict, Optional
 
 # ── Optional hardware imports ─────────────────────────────────────────────────
+# GPIO strategy (tried in order):
+#
+#  1. gpiozero + RPiGPIOFactory  — matches original SLED implementation exactly.
+#     Forces gpiozero to use RPi.GPIO as its backend instead of the default
+#     pigpio backend.  The pigpio backend requires pigpiod which FPP does not
+#     run, causing [Errno 22] Invalid argument.
+#
+#  2. Raw RPi.GPIO  — direct /dev/gpiomem access, no daemon required.
+#     Used when gpiozero is not installed.
+#
+#  Note: FPP must NOT have these GPIO pins configured in gpio.json.
+#        If fppd claims a pin first, both backends fail with EINVAL.
+#        save.php removes SLED entries from gpio.json to prevent this.
+
 try:
-    from gpiozero import Button
+    from gpiozero import Button as _GpiozeroButton          # type: ignore
+    from gpiozero.pins.rpigpio import RPiGPIOFactory as _RPiGPIOFactory  # type: ignore
+    _GPIOZERO_AVAILABLE = True
 except ImportError:
-    Button = None  # type: ignore
+    _GpiozeroButton  = None   # type: ignore
+    _RPiGPIOFactory  = None   # type: ignore
+    _GPIOZERO_AVAILABLE = False
+
+try:
+    import RPi.GPIO as _RPIGPIO  # type: ignore
+    _RPIGPIO_AVAILABLE = True
+except ImportError:
+    _RPIGPIO = None  # type: ignore
+    _RPIGPIO_AVAILABLE = False
 
 try:
     import serial  # pyserial
@@ -394,27 +419,18 @@ class GPIOInputs:
         self._threads: list = []
         self._readers: Dict[str, Ld2410UsbReader] = {}
 
-        # ── GPIO buttons ──────────────────────────────────────────────────
-        self._letter_btn   = None
-        self._donation_btn = None
-        if Button is None:
-            print("[GPIOInputs] gpiozero not available — GPIO sensors disabled.", flush=True)
+        # ── GPIO sensors ──────────────────────────────────────────────────
+        # Try gpiozero+RPiGPIOFactory first (original implementation).
+        # Fall back to raw RPi.GPIO if gpiozero is not installed.
+        self._gpio_pins: list  = []   # BCM pins registered via RPi.GPIO (for cleanup)
+        self._gpiozero_btns: list = [] # gpiozero Button objects (keep alive — GC closes them)
+        if _GPIOZERO_AVAILABLE:
+            self._setup_gpiozero(letter_pin, donation_pin)
+        elif _RPIGPIO_AVAILABLE:
+            self._setup_rpigpio(letter_pin, donation_pin)
         else:
-            try:
-                self._letter_btn = Button(letter_pin, pull_up=True, bounce_time=0.05)
-                self._letter_btn.when_pressed = lambda: self._emit("l")
-                print(f"[GPIOInputs] Letter sensor on GPIO{letter_pin} OK", flush=True)
-
-                if donation_pin is not None:
-                    self._donation_btn = Button(donation_pin, pull_up=True, bounce_time=0.05)
-                    self._donation_btn.when_pressed = lambda: self._emit("d")
-                    print(f"[GPIOInputs] Donation sensor on GPIO{donation_pin} OK", flush=True)
-            except Exception as exc:
-                print(f"[GPIOInputs] WARNING: GPIO init failed ({exc}) — "
-                      "letter/donation sensors disabled. Radar will still work.",
-                      flush=True)
-                self._letter_btn   = None
-                self._donation_btn = None
+            print("[GPIOInputs] Neither gpiozero nor RPi.GPIO available — "
+                  "GPIO sensors disabled.", flush=True)
 
         # ── LD2410 radar readers ───────────────────────────────────────────
         ld_cfg = cfg.get("ld2410", {}) or {}
@@ -443,6 +459,110 @@ class GPIOInputs:
         else:
             print("[GPIOInputs] LD2410 disabled in config.", flush=True)
 
+    # ── GPIO setup helpers ─────────────────────────────────────────────────
+
+    def _setup_rpigpio(self, letter_pin: int, donation_pin: Optional[int]) -> None:
+        """Configure GPIO edge detection using RPi.GPIO (no pigpiod needed).
+
+        Initialization pattern:
+          1. Cleanup pin first — removes any dirty state left by a prior run
+             that didn't call GPIO.cleanup() (e.g. daemon killed by SIGKILL).
+          2. Setup pin with pull-up.
+          3. Wait 500 ms for NPN beam-break sensor to stabilize — the IR AGC
+             needs a moment to lock onto the beam after power-up; adding edge
+             detection before it settles catches spurious falling edges.
+          4. Read pin once to drain any latched edge in the kernel driver.
+          5. Add edge detection.
+        """
+        pins_to_init = [(letter_pin, "l", "Letter")]
+        if donation_pin is not None:
+            pins_to_init.append((donation_pin, "d", "Donation"))
+
+        try:
+            _RPIGPIO.setmode(_RPIGPIO.BCM)
+            _RPIGPIO.setwarnings(False)
+
+            # Step 1 — pre-cleanup (handles stale state from unclean shutdown)
+            for pin, _code, _label in pins_to_init:
+                try:
+                    _RPIGPIO.remove_event_detect(pin)
+                except Exception:
+                    pass
+                try:
+                    _RPIGPIO.cleanup(pin)
+                except Exception:
+                    pass
+
+            # Step 2 — configure all pins as inputs with pull-up
+            for pin, _code, _label in pins_to_init:
+                _RPIGPIO.setup(pin, _RPIGPIO.IN, pull_up_down=_RPIGPIO.PUD_UP)
+
+            # Step 3 — wait for sensor output to stabilize
+            print("[GPIOInputs] Waiting 500 ms for beam sensors to stabilize...", flush=True)
+            time.sleep(0.5)
+
+            # Step 4+5 — drain pending edge state, then arm edge detection
+            for pin, code, label in pins_to_init:
+                initial = _RPIGPIO.input(pin)  # drain any latched edge
+                print(f"[GPIOInputs] {label} sensor GPIO{pin} initial state: "
+                      f"{'HIGH (beam OK)' if initial else 'LOW (beam broken or sensor unpowered)'}",
+                      flush=True)
+                _RPIGPIO.add_event_detect(
+                    pin, _RPIGPIO.FALLING,
+                    callback=lambda ch, c=code: self._emit(c),
+                    bouncetime=50,
+                )
+                self._gpio_pins.append(pin)
+                print(f"[GPIOInputs] {label} sensor on GPIO{pin} armed (RPi.GPIO)", flush=True)
+
+        except Exception as exc:
+            print(f"[GPIOInputs] WARNING: RPi.GPIO init failed ({exc}) — "
+                  "GPIO sensors disabled.", flush=True)
+            # Clean up any partial setup
+            for pin in self._gpio_pins:
+                try:
+                    _RPIGPIO.remove_event_detect(pin)
+                    _RPIGPIO.cleanup(pin)
+                except Exception:
+                    pass
+            self._gpio_pins = []
+
+    def _setup_gpiozero(self, letter_pin: int, donation_pin: Optional[int]) -> None:
+        """Configure GPIO using gpiozero + RPiGPIOFactory (original implementation).
+
+        Forces gpiozero to use RPi.GPIO as its pin backend instead of pigpio,
+        so no pigpiod daemon is required and FPP's GPIO ownership is not fought.
+        Matches the original: Button(pin, pull_up=True, bounce_time=0.05).
+        """
+        try:
+            factory = _RPiGPIOFactory()
+
+            pins_to_init = [(letter_pin, "l", "Letter")]
+            if donation_pin is not None:
+                pins_to_init.append((donation_pin, "d", "Donation"))
+
+            # Wait for NPN beam-break sensors to stabilize after power-up
+            print("[GPIOInputs] Waiting 500 ms for beam sensors to stabilize...", flush=True)
+            time.sleep(0.5)
+
+            for pin, code, label in pins_to_init:
+                btn = _GpiozeroButton(pin, pull_up=True, bounce_time=0.05, pin_factory=factory)
+                btn.when_pressed = lambda c=code: self._emit(c)
+                self._gpiozero_btns.append(btn)   # must stay referenced or GC closes pin
+                state = "HIGH (beam OK)" if not btn.is_pressed else "LOW (beam broken or sensor unpowered)"
+                print(f"[GPIOInputs] {label} sensor on GPIO{pin} armed — "
+                      f"initial state: {state} (gpiozero+RPiGPIO)", flush=True)
+
+        except Exception as exc:
+            print(f"[GPIOInputs] WARNING: gpiozero GPIO init failed ({exc}) — "
+                  "falling back to RPi.GPIO.", flush=True)
+            self._gpiozero_btns = []
+            # Attempt raw RPi.GPIO fallback
+            if _RPIGPIO_AVAILABLE:
+                self._setup_rpigpio(letter_pin, donation_pin)
+            else:
+                print("[GPIOInputs] RPi.GPIO also unavailable — GPIO sensors disabled.", flush=True)
+
     def _emit(self, code: str) -> None:
         try:
             self._q.put_nowait(code)
@@ -463,3 +583,19 @@ class GPIOInputs:
         for t in self._threads:
             if hasattr(t, "stop"):
                 t.stop()
+        # Close gpiozero buttons (releases pins back to the OS)
+        for btn in self._gpiozero_btns:
+            try:
+                btn.close()
+            except Exception:
+                pass
+        self._gpiozero_btns = []
+        # Clean up RPi.GPIO edge detection (used when gpiozero unavailable)
+        if _RPIGPIO_AVAILABLE and self._gpio_pins:
+            for pin in self._gpio_pins:
+                try:
+                    _RPIGPIO.remove_event_detect(pin)
+                    _RPIGPIO.cleanup(pin)
+                except Exception:
+                    pass
+            self._gpio_pins = []

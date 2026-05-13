@@ -108,7 +108,13 @@ function sledGpioEntry($pinName, $desc, $command) {
         "mode"         => "gpio_pu",   // input with pull-up (active-low beam break)
         "desc"         => $desc,
         "debounceTime" => 50,          // 50 ms debounce
-        "debounceEdge" => "falling",
+        // FPP requires both rising and falling keys to be present
+        "rising"       => [
+            "command"          => "",
+            "multisyncCommand" => false,
+            "multisyncHosts"   => "",
+            "args"             => [],
+        ],
         "falling"      => [
             "command"          => $command,
             "multisyncCommand" => false,
@@ -118,41 +124,28 @@ function sledGpioEntry($pinName, $desc, $command) {
     ];
 }
 
+// ── Remove any SLED entries from FPP's gpio.json ──────────────────────────────
+// The SLED daemon owns GPIO17/18 directly via RPi.GPIO. If FPP's GPIO plugin
+// also claims those pins it wins the race (fppd starts before the daemon) and
+// RPi.GPIO fails with EINVAL. Scrub any SLED trigger entries from gpio.json so
+// FPP never touches those pins.
 $gpioFile    = "/home/fpp/media/config/gpio.json";
-$gpioEntries = [];
+$gpioMsg     = "";
 if (file_exists($gpioFile)) {
     $gj = @json_decode(@file_get_contents($gpioFile), true);
-    if (is_array($gj)) $gpioEntries = $gj;
-}
-
-// Remove any existing SLED trigger entries so we can re-add cleanly
-$gpioEntries = array_values(array_filter($gpioEntries, function($e) {
-    $cmd = $e["falling"]["command"] ?? ($e["rising"]["command"] ?? "");
-    return strpos($cmd, "SLED - Trigger") !== 0;
-}));
-
-// Add letter trigger if pin is configured and in the map
-$letterBcm   = $cfg["pins"]["letter"]   ?? null;
-$donationBcm = $cfg["pins"]["donation"] ?? null;
-$gpioNotes   = [];
-
-if ($letterBcm && isset($bcmToP1[$letterBcm])) {
-    $gpioEntries[] = sledGpioEntry($bcmToP1[$letterBcm], "SLED Letter Sensor (GPIO{$letterBcm})", "SLED - Trigger Letter");
-    $gpioNotes[] = "Letter trigger → GPIO{$letterBcm} ({$bcmToP1[$letterBcm]})";
-}
-if ($donationBcm && isset($bcmToP1[$donationBcm])) {
-    $gpioEntries[] = sledGpioEntry($bcmToP1[$donationBcm], "SLED Donation Sensor (GPIO{$donationBcm})", "SLED - Trigger Donation");
-    $gpioNotes[] = "Donation trigger → GPIO{$donationBcm} ({$bcmToP1[$donationBcm]})";
-}
-
-$gpioMsg = "";
-if (!empty($gpioNotes)) {
-    $gpioJson = json_encode(array_values($gpioEntries), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n";
-    $gpioTmp  = $gpioFile . ".tmp";
-    if (@file_put_contents($gpioTmp, $gpioJson) !== false && @rename($gpioTmp, $gpioFile)) {
-        $gpioMsg = " GPIO triggers written (" . implode(", ", $gpioNotes) . "). Restart FPP to activate.";
-    } else {
-        $gpioMsg = " Note: could not write GPIO config (check permissions).";
+    if (is_array($gj)) {
+        $cleaned = array_values(array_filter($gj, function($e) {
+            $cmd = $e["falling"]["command"] ?? ($e["rising"]["command"] ?? "");
+            return strpos($cmd, "SLED - Trigger") !== 0;
+        }));
+        if (count($cleaned) !== count($gj)) {
+            // Only rewrite if we actually removed something
+            $gpioJson = json_encode($cleaned, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n";
+            $gpioTmp  = $gpioFile . ".tmp";
+            if (@file_put_contents($gpioTmp, $gpioJson) !== false && @rename($gpioTmp, $gpioFile)) {
+                $gpioMsg = " Removed SLED entries from FPP GPIO config — restart FPP to release pins.";
+            }
+        }
     }
 }
 
