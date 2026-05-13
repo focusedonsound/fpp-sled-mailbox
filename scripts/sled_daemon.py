@@ -134,6 +134,40 @@ class FPPPlayer:
         log.info("[FPP] stop")
         self._cmd("Stop Now")
 
+    def play_file(self, filename: str, timeout_s: int = 120) -> None:
+        """
+        Play a single media file directly via FPP's 'Start Media' command and
+        block until FPP reports idle (file finished) or timeout/shutdown.
+
+        This is the preferred method for letter/donation events — no playlist
+        required, just point at the video file.
+        """
+        if not filename:
+            return
+        log.info("[FPP] play file: %s", filename)
+        self._cmd("Start Media", [filename])
+
+        # Wait up to 2 s for FPP to actually begin playing
+        t0 = time.time()
+        while time.time() - t0 < 2.0 and not _shutdown.is_set():
+            raw = self._status()
+            if raw and raw.get("status_name", "") in ("playing", "stopping"):
+                break
+            time.sleep(0.2)
+
+        # Poll until fppd goes back to idle
+        deadline = time.time() + timeout_s
+        while time.time() < deadline and not _shutdown.is_set():
+            raw = self._status()
+            sname = (raw or {}).get("status_name", "idle")
+            if sname not in ("playing", "stopping"):
+                return          # finished normally
+            time.sleep(0.5)
+
+        # Timeout — stop so we don't get stuck
+        log.warning("[FPP] play_file timeout for %r — stopping", filename)
+        self.stop()
+
     def play_once(self, name: str, timeout_s: int = 120) -> None:
         """
         Start a playlist and block until it finishes (or timeout/shutdown).
@@ -183,10 +217,14 @@ def load_cfg() -> Dict[str, Any]:
 def in_window(cfg: Dict[str, Any], now: Optional[dt.datetime] = None) -> bool:
     now = now or dt.datetime.now()
     sched = cfg.get("schedule", {})
-    start_str = sched.get("start", "00:00")
-    end_str   = sched.get("end",   "23:59")
-    s = dt.datetime.strptime(start_str, "%H:%M").time()
-    e = dt.datetime.strptime(end_str,   "%H:%M").time()
+    start_str = sched.get("start", "16:00")
+    end_str   = sched.get("end",   "22:00")
+    try:
+        s = dt.datetime.strptime(start_str, "%H:%M").time()
+        e = dt.datetime.strptime(end_str,   "%H:%M").time()
+    except ValueError:
+        log.warning("[Schedule] Invalid time format (%s – %s), defaulting off", start_str, end_str)
+        return False
     return s <= now.time() < e
 
 
@@ -355,20 +393,40 @@ def main() -> None:
     letter_cd_s   = float(cfg.get("letter",   {}).get("cooldown_s", 3.0))
     donation_cd_s = float(cfg.get("donation", {}).get("cooldown_s", 5.0))
 
-    # ── Playlist config ────────────────────────────────────────────────────────
-    pl_cfg       = cfg.get("playlists", {})
-    pl_idle      = pl_cfg.get("idle",     "sled_idle")
+    # ── Playback config ────────────────────────────────────────────────────────
+    pl_cfg    = cfg.get("playlists", {})
+    pl_idle   = pl_cfg.get("idle", "sled_idle")
+    pl_timeout = int(pl_cfg.get("play_timeout_s", 120))
+
+    # Video files for letter/donation events (preferred — no playlist needed)
+    vid_cfg       = cfg.get("videos", {})
+    ev_letters    = vid_cfg.get("letter",   [])
+    ev_donations  = vid_cfg.get("donation", [])
+
+    if isinstance(ev_letters,   str): ev_letters   = [ev_letters]
+    if isinstance(ev_donations, str): ev_donations = [ev_donations]
+
+    # Filter out blanks
+    ev_letters   = [f for f in ev_letters   if f]
+    ev_donations = [f for f in ev_donations if f]
+
+    # Legacy fallback: if no video files configured, fall back to playlist names
     pl_letters   = pl_cfg.get("letter",   ["sled_letter"])
     pl_donations = pl_cfg.get("donation", [])
-    pl_timeout   = int(pl_cfg.get("play_timeout_s", 120))
-
-    # Normalise to lists
     if isinstance(pl_letters,   str): pl_letters   = [pl_letters]
     if isinstance(pl_donations, str): pl_donations = [pl_donations]
-
-    # Fallback: donation uses letter playlist if none configured
+    pl_letters   = [p for p in pl_letters   if p]
+    pl_donations = [p for p in pl_donations if p]
+    # Fallback: donation uses letter list if none configured
     if not pl_donations:
         pl_donations = pl_letters[:1]
+
+    # What actually runs for letter/donation events
+    use_video_letter   = bool(ev_letters)
+    use_video_donation = bool(ev_donations)
+    log.info("Letter mode: %s  Donation mode: %s",
+             f"video({ev_letters})"   if use_video_letter   else f"playlist({pl_letters})",
+             f"video({ev_donations})" if use_video_donation else f"playlist({pl_donations})")
 
     # ── Subsystems ─────────────────────────────────────────────────────────────
     fpp = FPPPlayer()
@@ -439,7 +497,12 @@ def main() -> None:
         if fpp.current_playlist() != "":
             fpp.stop()
 
-    log.info("SLED daemon running (PID=%d)", os.getpid())
+    sched_cfg = cfg.get("schedule", {})
+    log.info("SLED daemon running (PID=%d)  schedule=%s–%s  window_now=%s",
+             os.getpid(),
+             sched_cfg.get("start", "16:00"),
+             sched_cfg.get("end",   "22:00"),
+             sched_inside)
 
     try:
         while not _shutdown.is_set():
@@ -559,23 +622,30 @@ def main() -> None:
                     continue
                 last_letter_time = now_ts
 
-                pl = pl_letters[next_letter_idx % len(pl_letters)] if pl_letters else pl_idle
-                next_letter_idx += 1
-                log.info("[Letter] Playing playlist: %s", pl)
-
                 fpp.stop()
-                fpp.play_once(pl, timeout_s=pl_timeout)
+                if use_video_letter:
+                    media = ev_letters[next_letter_idx % len(ev_letters)]
+                    next_letter_idx += 1
+                    log.info("[Letter] Playing video file: %s", media)
+                    fpp.play_file(media, timeout_s=pl_timeout)
+                    event_meta: dict = {"file": media}
+                else:
+                    pl = pl_letters[next_letter_idx % len(pl_letters)] if pl_letters else pl_idle
+                    next_letter_idx += 1
+                    log.info("[Letter] Playing playlist: %s", pl)
+                    fpp.play_once(pl, timeout_s=pl_timeout)
+                    event_meta = {"playlist": pl}
 
                 now_iso = dt.datetime.now(dt.timezone.utc).astimezone().isoformat()
                 ha.pulse_letter()
                 ha.set_last_letter(now_iso)
-                ha.event("letter", {"playlist": pl, "ts": now_iso})
+                ha.event("letter", {**event_meta, "ts": now_iso})
 
                 lt = db.increment_counter("letter_total")
                 letter_today_count += 1
                 ha.set_letter_total(lt)
                 ha.set_letter_today(letter_today_count)
-                db.log_event("letter", {"playlist": pl})
+                db.log_event("letter", event_meta)
 
                 if in_window(cfg):
                     fpp.start_playlist(pl_idle, repeat=True)
@@ -591,23 +661,37 @@ def main() -> None:
                     continue
                 last_donation_time = now_ts
 
-                pl = pl_donations[next_donation_idx % len(pl_donations)] if pl_donations else pl_idle
-                next_donation_idx += 1
-                log.info("[Donation] Playing playlist: %s", pl)
-
                 fpp.stop()
-                fpp.play_once(pl, timeout_s=pl_timeout)
+                if use_video_donation:
+                    media = ev_donations[next_donation_idx % len(ev_donations)]
+                    next_donation_idx += 1
+                    log.info("[Donation] Playing video file: %s", media)
+                    fpp.play_file(media, timeout_s=pl_timeout)
+                    don_meta: dict = {"file": media}
+                elif ev_letters:
+                    # No donation videos set — fall back to letter videos
+                    media = ev_letters[next_donation_idx % len(ev_letters)]
+                    next_donation_idx += 1
+                    log.info("[Donation] Playing letter video (fallback): %s", media)
+                    fpp.play_file(media, timeout_s=pl_timeout)
+                    don_meta = {"file": media}
+                else:
+                    pl = pl_donations[next_donation_idx % len(pl_donations)] if pl_donations else pl_idle
+                    next_donation_idx += 1
+                    log.info("[Donation] Playing playlist: %s", pl)
+                    fpp.play_once(pl, timeout_s=pl_timeout)
+                    don_meta = {"playlist": pl}
 
                 now_iso = dt.datetime.now(dt.timezone.utc).astimezone().isoformat()
                 ha.pulse_donation()
                 ha.set_last_donation(now_iso)
-                ha.event("donation", {"playlist": pl, "ts": now_iso})
+                ha.event("donation", {**don_meta, "ts": now_iso})
 
                 dt_ = db.increment_counter("donation_total")
                 donation_today_count += 1
                 ha.set_donation_total(dt_)
                 ha.set_donation_today(donation_today_count)
-                db.log_event("donation", {"playlist": pl})
+                db.log_event("donation", don_meta)
 
                 if in_window(cfg):
                     fpp.start_playlist(pl_idle, repeat=True)

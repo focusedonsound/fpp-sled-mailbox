@@ -35,11 +35,15 @@ if (file_exists($configFile)) {
   if (is_array($j)) $cfg = $j;
 }
 
-// ── FPP Playlists ─────────────────────────────────────────────────────────
+// ── Idle playlist ─────────────────────────────────────────────────────────
 $cfg["playlists"]["idle"]           = pStr("pl_idle", "sled_idle");
-$cfg["playlists"]["letter"]         = pClips("letter_pl");
-$cfg["playlists"]["donation"]       = pClips("donation_pl");
 $cfg["playlists"]["play_timeout_s"] = pInt("play_timeout_s", 120);
+// Note: playlists.letter / playlists.donation are kept in config for legacy
+// fallback only — new setups use videos.letter / videos.donation below.
+
+// ── Event video files (letter/donation round-robin) ───────────────────────
+$cfg["videos"]["letter"]   = pClips("letter_vid");
+$cfg["videos"]["donation"] = pClips("donation_vid");
 
 // ── Pins + cooldowns ──────────────────────────────────────────────────────
 $pinLetter   = pStr("pin_letter");

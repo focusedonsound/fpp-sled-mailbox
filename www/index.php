@@ -177,39 +177,39 @@ $serialPorts = listSerialPorts();
 </div>
 
 <p class="text-muted">
-  Configure FPP playlists for letter and donation events. Video playback is handled
-  natively by FPP &mdash; create your playlists in <strong>Content Setup &rarr; Playlists</strong>,
-  then enter their names here. Wire sensor GPIO pins to <strong>FPP Commands</strong>
-  using FPP&rsquo;s built-in GPIO plugin &mdash;
-  <em>SLED &ndash; Trigger Letter</em> and <em>SLED &ndash; Trigger Donation</em>.
+  The <strong>idle screen</strong> is an FPP playlist that loops during the active schedule window.
+  <strong>Letter and donation events</strong> play individual video files in round-robin order —
+  upload your videos via <strong>Content Setup &rarr; File Manager</strong>, then select them below.
+  Wire sensor GPIO pins to <em>SLED &ndash; Trigger Letter</em> / <em>SLED &ndash; Trigger Donation</em>
+  using FPP&rsquo;s built-in GPIO plugin.
 </p>
 
 <!-- Playlist name autocomplete populated by JS from /api/playlists -->
 <datalist id="fppPlaylists"></datalist>
+<!-- Media file list populated by JS from /api/media -->
+<datalist id="fppMediaFiles"></datalist>
 
 <form id="sledForm" onsubmit="return false;">
 
-  <!-- ── FPP Playlists ─────────────────────────────────────────────────── -->
+  <!-- ── Idle Playlist ────────────────────────────────────────────────── -->
   <div class="fppTableWrapper fppTableWrapperAsTable mb-3">
     <div class="fppTableContents fppFThScrollContainer">
       <table class="fppSelectableRowTable fppStickyTheadTable" style="width:100%;">
         <thead>
           <tr>
             <th colspan="2" style="padding:8px;">
-              <i class="fas fa-fw fa-list-ol"></i> FPP Playlists
+              <i class="fas fa-fw fa-rotate"></i> Idle Screen
               <span class="text-muted fw-normal small ms-2">
-                Enter FPP playlist names &mdash; multiple playlists play in round-robin order
+                FPP playlist that loops continuously during the active schedule window
               </span>
             </th>
           </tr>
         </thead>
         <tbody>
-
-          <!-- Idle Playlist -->
           <tr>
             <td style="width:220px; padding:8px;">
-              <label class="mb-0"><i class="fas fa-fw fa-rotate"></i> Idle Playlist</label>
-              <div class="text-muted small">Loops during the active schedule window</div>
+              <label class="mb-0">Idle Playlist</label>
+              <div class="text-muted small">Must be set to Repeat in FPP</div>
             </td>
             <td style="padding:8px;">
               <input type="text" class="form-control form-control-sm" name="pl_idle"
@@ -217,74 +217,10 @@ $serialPorts = listSerialPorts();
                      value="<?php echo htmlspecialchars($cfg['playlists']['idle'] ?? 'sled_idle'); ?>" />
             </td>
           </tr>
-
-          <!-- Letter Playlists -->
           <tr>
             <td style="padding:8px;">
-              <label class="mb-0"><i class="fas fa-fw fa-envelope"></i> Letter Playlists</label>
-              <div class="text-muted small">Played in round-robin when a letter drops</div>
-            </td>
-            <td style="padding:8px;">
-              <div id="letterPlList">
-                <?php
-                $letterPls = $cfg['playlists']['letter'] ?? ['sled_letter'];
-                if (is_string($letterPls)) $letterPls = [$letterPls];
-                if (empty($letterPls)) $letterPls = [''];
-                foreach ($letterPls as $pl): ?>
-                <div class="d-flex gap-2 mb-1 pl-row" data-type="letter">
-                  <input type="text" class="form-control form-control-sm" name="letter_pl[]"
-                         list="fppPlaylists" placeholder="sled_letter"
-                         value="<?php echo htmlspecialchars($pl); ?>" />
-                  <button type="button" class="sled-btn sled-btn-sm"
-                          onclick="sledRemovePl(this)" title="Remove">
-                    <i class="fas fa-fw fa-trash"></i>
-                  </button>
-                </div>
-                <?php endforeach; ?>
-              </div>
-              <button type="button" class="sled-btn sled-btn-sm mt-1"
-                      onclick="sledAddPl('letter')">
-                <i class="fas fa-fw fa-plus"></i> Add Playlist
-              </button>
-            </td>
-          </tr>
-
-          <!-- Donation Playlists -->
-          <tr>
-            <td style="padding:8px;">
-              <label class="mb-0"><i class="fas fa-fw fa-gift"></i> Donation Playlists</label>
-              <div class="text-muted small">Leave empty to reuse letter playlists</div>
-            </td>
-            <td style="padding:8px;">
-              <div id="donationPlList">
-                <?php
-                $donationPls = $cfg['playlists']['donation'] ?? [];
-                if (is_string($donationPls)) $donationPls = [$donationPls];
-                if (empty($donationPls)) $donationPls = [''];
-                foreach ($donationPls as $pl): ?>
-                <div class="d-flex gap-2 mb-1 pl-row" data-type="donation">
-                  <input type="text" class="form-control form-control-sm" name="donation_pl[]"
-                         list="fppPlaylists" placeholder="sled_donation (or leave blank)"
-                         value="<?php echo htmlspecialchars($pl); ?>" />
-                  <button type="button" class="sled-btn sled-btn-sm"
-                          onclick="sledRemovePl(this)" title="Remove">
-                    <i class="fas fa-fw fa-trash"></i>
-                  </button>
-                </div>
-                <?php endforeach; ?>
-              </div>
-              <button type="button" class="sled-btn sled-btn-sm mt-1"
-                      onclick="sledAddPl('donation')">
-                <i class="fas fa-fw fa-plus"></i> Add Playlist
-              </button>
-            </td>
-          </tr>
-
-          <!-- Playlist timeout -->
-          <tr>
-            <td style="padding:8px;">
-              <label class="mb-0"><i class="fas fa-fw fa-hourglass-half"></i> Playlist Timeout</label>
-              <div class="text-muted small">Max seconds to wait for playlist to finish</div>
+              <label class="mb-0"><i class="fas fa-fw fa-hourglass-half"></i> Video Timeout</label>
+              <div class="text-muted small">Max seconds to wait for a video to finish</div>
             </td>
             <td style="padding:8px;">
               <div class="input-group input-group-sm" style="max-width:160px;">
@@ -293,6 +229,91 @@ $serialPorts = listSerialPorts();
                        value="<?php echo (int)($cfg['playlists']['play_timeout_s'] ?? 120); ?>" />
                 <span class="input-group-text">sec</span>
               </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── Event Videos ───────────────────────────────────────────────────── -->
+  <div class="fppTableWrapper fppTableWrapperAsTable mb-3">
+    <div class="fppTableContents fppFThScrollContainer">
+      <table class="fppSelectableRowTable fppStickyTheadTable" style="width:100%;">
+        <thead>
+          <tr>
+            <th colspan="2" style="padding:8px;">
+              <i class="fas fa-fw fa-film"></i> Event Videos
+              <span class="text-muted fw-normal small ms-2">
+                Video files played when a letter or donation drops &mdash; multiple files play in round-robin order
+              </span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+
+          <!-- Letter Videos -->
+          <tr>
+            <td style="width:220px; padding:8px;">
+              <label class="mb-0"><i class="fas fa-fw fa-envelope"></i> Letter Videos</label>
+              <div class="text-muted small">Played in round-robin when a letter drops</div>
+            </td>
+            <td style="padding:8px;">
+              <div id="letterVidList">
+                <?php
+                $letterVids = $cfg['videos']['letter'] ?? [];
+                if (is_string($letterVids)) $letterVids = [$letterVids];
+                if (empty($letterVids)) $letterVids = [''];
+                foreach ($letterVids as $vf): ?>
+                <div class="d-flex gap-2 mb-1 vid-row" data-type="letter">
+                  <select class="form-select form-select-sm" name="letter_vid[]">
+                    <option value="">— select a video file —</option>
+                    <?php /* JS will populate options; pre-select saved value */ ?>
+                  </select>
+                  <input type="hidden" class="vid-saved" value="<?php echo htmlspecialchars($vf); ?>" />
+                  <button type="button" class="sled-btn sled-btn-sm"
+                          onclick="sledRemoveVid(this)" title="Remove">
+                    <i class="fas fa-fw fa-trash"></i>
+                  </button>
+                </div>
+                <?php endforeach; ?>
+              </div>
+              <button type="button" class="sled-btn sled-btn-sm mt-1"
+                      onclick="sledAddVid('letter')">
+                <i class="fas fa-fw fa-plus"></i> Add Video
+              </button>
+            </td>
+          </tr>
+
+          <!-- Donation Videos -->
+          <tr>
+            <td style="padding:8px;">
+              <label class="mb-0"><i class="fas fa-fw fa-gift"></i> Donation Videos</label>
+              <div class="text-muted small">Leave empty to reuse letter videos</div>
+            </td>
+            <td style="padding:8px;">
+              <div id="donationVidList">
+                <?php
+                $donationVids = $cfg['videos']['donation'] ?? [];
+                if (is_string($donationVids)) $donationVids = [$donationVids];
+                if (empty($donationVids)) $donationVids = [''];
+                foreach ($donationVids as $vf): ?>
+                <div class="d-flex gap-2 mb-1 vid-row" data-type="donation">
+                  <select class="form-select form-select-sm" name="donation_vid[]">
+                    <option value="">— select a video file —</option>
+                  </select>
+                  <input type="hidden" class="vid-saved" value="<?php echo htmlspecialchars($vf); ?>" />
+                  <button type="button" class="sled-btn sled-btn-sm"
+                          onclick="sledRemoveVid(this)" title="Remove">
+                    <i class="fas fa-fw fa-trash"></i>
+                  </button>
+                </div>
+                <?php endforeach; ?>
+              </div>
+              <button type="button" class="sled-btn sled-btn-sm mt-1"
+                      onclick="sledAddVid('donation')">
+                <i class="fas fa-fw fa-plus"></i> Add Video
+              </button>
             </td>
           </tr>
 
@@ -908,11 +929,12 @@ function sledShowLog() {
   } catch(e) { /* not critical — text input still works */ }
 })();
 
-// ── Dynamic playlist rows ─────────────────────────────────────────────────
+// ── Dynamic playlist rows (idle autocomplete) ─────────────────────────────
 function sledAddPl(type) {
   const listId = type === 'letter' ? 'letterPlList' : 'donationPlList';
   const list   = document.getElementById(listId);
-  const div    = document.createElement('div');
+  if (!list) return;
+  const div = document.createElement('div');
   div.className = 'd-flex gap-2 mb-1 pl-row';
   div.dataset.type = type;
   const ph = type === 'letter' ? 'sled_letter' : 'sled_donation (or leave blank)';
@@ -928,6 +950,90 @@ function sledAddPl(type) {
 
 function sledRemovePl(btn) {
   const row = btn.closest('.pl-row');
+  if (row) row.remove();
+}
+
+// ── Media file loader + video row helpers ─────────────────────────────────
+let _sledMediaFiles = [];   // cached file list populated on page load
+
+(async function sledLoadMedia() {
+  try {
+    const res  = await fetch('/api/media', { cache: 'no-store' });
+    const data = await res.json();
+    // FPP returns {media: [...]} or a flat array
+    const files = Array.isArray(data) ? data
+                : (Array.isArray(data.media) ? data.media : []);
+    // Normalise to plain strings and keep only video-ish extensions
+    const videoExts = /\.(mp4|mov|avi|mkv|m4v|mpg|mpeg|wmv|flv|webm|ts)$/i;
+    _sledMediaFiles = files
+      .map(f => typeof f === 'string' ? f : (f.name || f.filename || ''))
+      .filter(f => f && videoExts.test(f))
+      .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+
+    // Populate datalist for any text-based fallbacks
+    const dl = document.getElementById('fppMediaFiles');
+    if (dl) {
+      _sledMediaFiles.forEach(f => {
+        const opt = document.createElement('option');
+        opt.value = f;
+        dl.appendChild(opt);
+      });
+    }
+
+    // Fill all existing <select name="*_vid[]"> with options,
+    // then restore the saved value from the adjacent hidden input
+    document.querySelectorAll('select[name="letter_vid[]"], select[name="donation_vid[]"]')
+      .forEach(sel => sledPopulateVidSelect(sel));
+
+  } catch(e) { /* non-critical */ }
+})();
+
+function sledPopulateVidSelect(sel, savedVal) {
+  // Preserve existing selection or fall back to hidden saved value
+  const saved = savedVal
+    ?? sel.closest('.vid-row')?.querySelector('.vid-saved')?.value
+    ?? '';
+  // Clear & rebuild
+  sel.innerHTML = '<option value="">— select a video file —</option>';
+  _sledMediaFiles.forEach(f => {
+    const opt = document.createElement('option');
+    opt.value = f;
+    opt.textContent = f;
+    if (f === saved) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  // If saved value not in list (file renamed/moved), add it so it isn't lost
+  if (saved && !_sledMediaFiles.includes(saved)) {
+    const opt = document.createElement('option');
+    opt.value = saved;
+    opt.textContent = saved + ' (not found)';
+    opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
+function sledAddVid(type) {
+  const listId = type === 'letter' ? 'letterVidList' : 'donationVidList';
+  const list   = document.getElementById(listId);
+  if (!list) return;
+  const div = document.createElement('div');
+  div.className = 'd-flex gap-2 mb-1 vid-row';
+  div.dataset.type = type;
+  div.innerHTML = `
+    <select class="form-select form-select-sm" name="${type}_vid[]">
+      <option value="">— select a video file —</option>
+    </select>
+    <input type="hidden" class="vid-saved" value="" />
+    <button type="button" class="sled-btn sled-btn-sm"
+            onclick="sledRemoveVid(this)" title="Remove">
+      <i class="fas fa-fw fa-trash"></i>
+    </button>`;
+  list.appendChild(div);
+  sledPopulateVidSelect(div.querySelector('select'));
+}
+
+function sledRemoveVid(btn) {
+  const row = btn.closest('.vid-row');
   if (row) row.remove();
 }
 
