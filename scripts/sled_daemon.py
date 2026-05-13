@@ -145,7 +145,8 @@ class FPPPlayer:
         if not filename:
             return
         log.info("[FPP] play file: %s", filename)
-        self._cmd("Start Media", [filename])
+        result = self._cmd("Start Media", [filename])
+        log.info("[FPP] Start Media response: %r", result)
 
         # Wait up to 2 s for FPP to actually begin playing
         t0 = time.time()

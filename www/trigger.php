@@ -177,6 +177,14 @@ switch ($action) {
     exit;
   }
 
+  // ── List available FPP commands (for diagnostics) ────────────────────────
+  case 'fpp_commands': {
+    header('Content-Type: application/json; charset=utf-8');
+    $raw = @file_get_contents('http://localhost/api/commands') ?: '{}';
+    echo $raw;
+    exit;
+  }
+
   // ── Daemon log tail (for in-UI diagnostics) ──────────────────────────────
   case 'logtail': {
     header('Content-Type: application/json; charset=utf-8');
