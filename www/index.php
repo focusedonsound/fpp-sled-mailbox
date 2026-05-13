@@ -69,6 +69,85 @@ $cfg         = loadConfig($configFile);
 $running     = daemonRunning();
 $serialPorts = listSerialPorts();
 ?>
+<style>
+/* ── SLED plugin — explicit colours for FPP 9.x / 10.x compatibility ──────
+   FPP 9.x uses Bootstrap 4 with its own dark theme; btn-outline-light and
+   alert-warning can render as white-on-white / unreadable there.
+   All colours here are hardcoded so they look the same on any FPP version.
+   ───────────────────────────────────────────────────────────────────────── */
+.sled-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .35rem .8rem;
+  font-size: .875rem;
+  font-weight: 500;
+  line-height: 1.5;
+  text-align: center;
+  white-space: nowrap;
+  cursor: pointer;
+  border: 1px solid #3a7fc1;
+  border-radius: .3rem;
+  text-decoration: none !important;
+  background-color: #1a6eb5;
+  color: #fff !important;
+  transition: background-color .15s ease-in-out, border-color .15s;
+  vertical-align: middle;
+}
+.sled-btn:hover, .sled-btn:focus {
+  background-color: #155a94;
+  border-color: #0e4370;
+  color: #fff !important;
+  text-decoration: none !important;
+}
+.sled-btn:disabled, .sled-btn.disabled {
+  opacity: .55;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.sled-btn-sm {
+  padding: .2rem .5rem;
+  font-size: .8rem;
+  border-radius: .25rem;
+}
+/* Inline add/remove row buttons — slightly muted */
+.sled-btn-row {
+  background-color: #455a72;
+  border-color: #556880;
+}
+.sled-btn-row:hover {
+  background-color: #344657;
+  border-color: #344657;
+}
+/* ── Warning banner — explicit amber/warm colours that override FPP 9 theme */
+#sledDepBanner {
+  background-color: #fff3cd !important;
+  border: 1px solid #e6a817 !important;
+  color: #5a3e05 !important;
+  border-radius: .35rem;
+}
+#sledDepBanner strong {
+  color: #3d2900 !important;
+}
+#sledDepBanner em {
+  color: #5a3e05 !important;
+  font-style: normal;
+  font-weight: 500;
+}
+#sledDepBanner small {
+  color: #7a5a1a !important;
+}
+#sledDepBanner code {
+  background-color: #ffe69c;
+  padding: .1rem .35rem;
+  border-radius: .2rem;
+  color: #3d2600 !important;
+  font-size: .85em;
+}
+#sledDepBanner .btn-close {
+  filter: brightness(0) saturate(100%) opacity(.5);
+}
+</style>
 
 <div class="d-flex justify-content-between align-items-center mb-2">
   <h2 class="mb-0">
@@ -76,11 +155,11 @@ $serialPorts = listSerialPorts();
   </h2>
   <div class="d-flex align-items-center gap-2">
     <a href="https://buymeacoffee.com/jm9pwtesct" target="_blank" rel="noopener noreferrer"
-       class="buttons btn-outline-light">
+       class="sled-btn">
       <i class="fas fa-fw fa-mug-hot"></i> Buy Me a Coffee
     </a>
     <a href="https://paypal.me/NScilingo" target="_blank" rel="noopener noreferrer"
-       class="buttons btn-outline-light">
+       class="sled-btn">
       <i class="fab fa-fw fa-paypal"></i> Donate via PayPal
     </a>
   </div>
@@ -156,14 +235,14 @@ $serialPorts = listSerialPorts();
                   <input type="text" class="form-control form-control-sm" name="letter_pl[]"
                          list="fppPlaylists" placeholder="sled_letter"
                          value="<?php echo htmlspecialchars($pl); ?>" />
-                  <button type="button" class="buttons btn-outline-light btn-sm"
+                  <button type="button" class="sled-btn sled-btn-sm"
                           onclick="sledRemovePl(this)" title="Remove">
                     <i class="fas fa-fw fa-trash"></i>
                   </button>
                 </div>
                 <?php endforeach; ?>
               </div>
-              <button type="button" class="buttons btn-outline-light btn-sm mt-1"
+              <button type="button" class="sled-btn sled-btn-sm mt-1"
                       onclick="sledAddPl('letter')">
                 <i class="fas fa-fw fa-plus"></i> Add Playlist
               </button>
@@ -187,14 +266,14 @@ $serialPorts = listSerialPorts();
                   <input type="text" class="form-control form-control-sm" name="donation_pl[]"
                          list="fppPlaylists" placeholder="sled_donation (or leave blank)"
                          value="<?php echo htmlspecialchars($pl); ?>" />
-                  <button type="button" class="buttons btn-outline-light btn-sm"
+                  <button type="button" class="sled-btn sled-btn-sm"
                           onclick="sledRemovePl(this)" title="Remove">
                     <i class="fas fa-fw fa-trash"></i>
                   </button>
                 </div>
                 <?php endforeach; ?>
               </div>
-              <button type="button" class="buttons btn-outline-light btn-sm mt-1"
+              <button type="button" class="sled-btn sled-btn-sm mt-1"
                       onclick="sledAddPl('donation')">
                 <i class="fas fa-fw fa-plus"></i> Add Playlist
               </button>
@@ -353,7 +432,7 @@ $serialPorts = listSerialPorts();
               </div>
             </td>
             <td colspan="2" style="padding:8px; text-align:right;">
-              <button type="button" class="buttons btn-outline-light btn-sm"
+              <button type="button" class="sled-btn sled-btn-sm"
                       onclick="sledRadarOpen()"
                       title="Open the Radar Diagnostics panel to view live per-gate energy readings, tune sensitivity thresholds, and write settings directly to the radar hardware. Car counting on the selected radar is paused while the panel is open.">
                 <i class="fas fa-fw fa-radar"></i> Radar Diagnostics
@@ -629,16 +708,16 @@ $serialPorts = listSerialPorts();
 
   <!-- ── Save + Test + Daemon ─────────────────────────────────────────── -->
   <div class="d-flex flex-wrap gap-2 mb-4">
-    <button type="button" class="buttons btn-outline-light" onclick="sledSave()">
+    <button type="button" class="sled-btn" onclick="sledSave()">
       <i class="fas fa-fw fa-save"></i> Save Settings
     </button>
-    <button type="button" class="buttons btn-outline-light" onclick="sledTrigger('letter')">
+    <button type="button" class="sled-btn" onclick="sledTrigger('letter')">
       <i class="fas fa-fw fa-envelope"></i> Test Letter
     </button>
-    <button type="button" class="buttons btn-outline-light" onclick="sledTrigger('donation')">
+    <button type="button" class="sled-btn" onclick="sledTrigger('donation')">
       <i class="fas fa-fw fa-gift"></i> Test Donation
     </button>
-    <button type="button" class="buttons btn-outline-light" onclick="sledRestart()"
+    <button type="button" class="sled-btn" onclick="sledRestart()"
             title="Kill and restart the SLED car-counter daemon. Use this after saving settings or after a plugin update.">
       <i class="fas fa-fw fa-rotate-right"></i> Restart Daemon
     </button>
@@ -772,7 +851,7 @@ function sledAddPl(type) {
   div.innerHTML = `
     <input type="text" class="form-control form-control-sm" name="${type}_pl[]"
            list="fppPlaylists" placeholder="${ph}" />
-    <button type="button" class="buttons btn-outline-light btn-sm"
+    <button type="button" class="sled-btn sled-btn-sm"
             onclick="sledRemovePl(this)" title="Remove">
       <i class="fas fa-fw fa-trash"></i>
     </button>`;
