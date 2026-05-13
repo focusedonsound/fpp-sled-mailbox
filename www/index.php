@@ -75,10 +75,6 @@ $serialPorts = listSerialPorts();
     <i class="fas fa-fw fa-mailbox"></i> SLED &mdash; Smart Letters to Santa
   </h2>
   <div class="d-flex align-items-center gap-2">
-    <span class="badge <?php echo $running ? 'bg-success' : 'bg-secondary'; ?> fs-6">
-      <i class="fas fa-fw <?php echo $running ? 'fa-circle-check' : 'fa-circle-xmark'; ?>"></i>
-      <?php echo $running ? 'Car Counter Running' : 'Car Counter Stopped'; ?>
-    </span>
     <a href="https://buymeacoffee.com/jm9pwtesct" target="_blank" rel="noopener noreferrer"
        class="buttons btn-outline-light">
       <i class="fas fa-fw fa-mug-hot"></i> Buy Me a Coffee
@@ -631,8 +627,8 @@ $serialPorts = listSerialPorts();
     </div>
   </div>
 
-  <!-- ── Save + Test ─────────────────────────────────────────────────── -->
-  <div class="d-flex gap-2 mb-4">
+  <!-- ── Save + Test + Daemon ─────────────────────────────────────────── -->
+  <div class="d-flex flex-wrap gap-2 mb-4">
     <button type="button" class="buttons btn-outline-light" onclick="sledSave()">
       <i class="fas fa-fw fa-save"></i> Save Settings
     </button>
@@ -642,6 +638,16 @@ $serialPorts = listSerialPorts();
     <button type="button" class="buttons btn-outline-light" onclick="sledTrigger('donation')">
       <i class="fas fa-fw fa-gift"></i> Test Donation
     </button>
+    <button type="button" class="buttons btn-outline-light" onclick="sledRestart()"
+            title="Kill and restart the SLED car-counter daemon. Use this after saving settings or after a plugin update.">
+      <i class="fas fa-fw fa-rotate-right"></i> Restart Daemon
+    </button>
+    <span id="sledDaemonBadge"
+          class="badge <?php echo $running ? 'bg-success' : 'bg-secondary'; ?> align-self-center"
+          title="SLED daemon status">
+      <i class="fas fa-fw <?php echo $running ? 'fa-circle-check' : 'fa-circle-xmark'; ?>"></i>
+      <?php echo $running ? 'Daemon running' : 'Daemon stopped'; ?>
+    </span>
   </div>
 
 </form>
@@ -714,6 +720,26 @@ async function sledTrigger(kind) {
   const res = await fetch(sledUrl('trigger.php') + '&action=' + kind, { cache:'no-store' });
   const j   = await sledJson(res);
   sledNotify(j.message || (j.status==='OK' ? 'Triggered.' : 'Failed.'), j.status !== 'OK');
+}
+
+// ── Restart daemon ────────────────────────────────────────────────────────
+async function sledRestart() {
+  sledNotify('Restarting daemon…', false);
+  const res = await fetch(sledUrl('trigger.php') + '&action=restart', { cache:'no-store' });
+  const j   = await sledJson(res);
+  sledNotify(j.message || (j.status==='OK' ? 'Daemon restarting.' : 'Restart failed.'), j.status !== 'OK');
+  // Refresh daemon badge after a short delay
+  setTimeout(async () => {
+    try {
+      const r = await fetch(sledUrl('trigger.php') + '&action=depcheck', { cache:'no-store' });
+      const d = await r.json();
+      const badge = document.getElementById('sledDaemonBadge');
+      if (!badge) return;
+      badge.className = 'badge ' + (d.daemon_up ? 'bg-success' : 'bg-secondary') + ' align-self-center';
+      badge.innerHTML = '<i class="fas fa-fw ' + (d.daemon_up ? 'fa-circle-check' : 'fa-circle-xmark') + '"></i> '
+                      + (d.daemon_up ? 'Daemon running' : 'Daemon stopped');
+    } catch(e) {}
+  }, 3000);
 }
 
 // ── Populate FPP playlist autocomplete ───────────────────────────────────
