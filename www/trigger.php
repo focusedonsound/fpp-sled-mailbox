@@ -33,9 +33,20 @@ switch ($action) {
     respond(true, "Stop queued.");
 
   case 'restart':
-    // Kill ALL existing daemon instances, then start fresh via callbacks.sh
-    @exec("pkill -f sled_daemon.py 2>/dev/null");
-    sleep(1);
+    // Kill ALL existing daemon instances and wait for them to exit.
+    // SIGTERM first (graceful), then SIGKILL if still alive after 3s.
+    @exec("pkill -TERM -f sled_daemon.py 2>/dev/null");
+    $pidFile = "/home/fpp/media/logs/sled_daemon.pid";
+    @unlink($pidFile);  // Remove PID file so callbacks.sh starts fresh
+    $waited = 0;
+    while (trim(shell_exec("pgrep -f sled_daemon.py 2>/dev/null") ?: "") !== "" && $waited < 40) {
+        usleep(100000);  // 0.1s
+        $waited++;
+    }
+    // Force-kill anything still alive
+    @exec("pkill -KILL -f sled_daemon.py 2>/dev/null");
+    usleep(200000);  // 0.2s final wait
+
     if (!$callbacks || !file_exists($callbacks))
       respond(false, "callbacks.sh not found");
     @exec("bash " . escapeshellarg($callbacks) . " pluginStart > /dev/null 2>&1 &");
