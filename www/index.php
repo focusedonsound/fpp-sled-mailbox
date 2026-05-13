@@ -90,7 +90,7 @@ $serialPorts = listSerialPorts();
 <div id="sledDepBanner" class="alert alert-warning d-none mb-3" role="alert">
   <div class="d-flex justify-content-between align-items-start gap-3">
     <div>
-      <strong><i class="fas fa-fw fa-triangle-exclamation"></i> Missing dependencies detected</strong>
+      <strong><i class="fas fa-fw fa-triangle-exclamation"></i> Attention needed</strong>
       <div id="sledDepMsg" class="mt-1 small"></div>
     </div>
     <button type="button" class="btn-close flex-shrink-0" onclick="document.getElementById('sledDepBanner').classList.add('d-none')"></button>
@@ -795,21 +795,30 @@ function sledToggle(id, enabled) {
   try {
     const res = await fetch(sledUrl('trigger.php') + '&action=depcheck', { cache:'no-store' });
     const j   = await sledJson(res);
-    if (j.ok) return;   // all good — banner stays hidden
+
+    // Show banner only when something actionable is wrong.
+    // pyserial is flagged in j.missing only when radar is enabled, so j.ok
+    // will be true for the common case (no radar hardware).
+    // daemon_up is shown separately since it is always relevant.
+    const hasMissing = !j.ok;                  // required deps absent
+    const daemonDown = !j.daemon_up;           // daemon not responding
+    if (!hasMissing && !daemonDown) return;    // all good — banner stays hidden
 
     const banner = document.getElementById('sledDepBanner');
     const msgEl  = document.getElementById('sledDepMsg');
     if (!banner || !msgEl) return;
 
     const items = [];
-    if (!j.pyserial)  items.push('<strong>python3-serial</strong> (radar/USB communication)');
-    if (!j.daemon_up) items.push('<em>SLED daemon is not running</em>');
+    if (daemonDown) items.push('<strong>SLED daemon is not running</strong> — use the Restart Daemon button below');
+    // Only mention pyserial if radar is enabled and it is genuinely missing
+    if (j.radar_enabled && !j.pyserial)
+      items.push('<strong>python3-serial</strong> is required for radar/USB communication');
 
-    let html = 'The following are missing: ' + items.join(', ') + '.';
+    let html = items.join('<br>');
     if (j.fix_cmd) {
-      html += '<br>To fix, SSH into your FPP device and run:<br>'
+      html += '<br><br>To install the missing package, SSH into your FPP device and run:<br>'
             + '<code class="user-select-all">' + j.fix_cmd + '</code>'
-            + '<br><small class="text-muted">Then use the Restart Daemon button below to apply.</small>';
+            + '<br><small class="text-muted">Then click Restart Daemon to apply.</small>';
     }
     msgEl.innerHTML = html;
     banner.classList.remove('d-none');

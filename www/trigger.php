@@ -155,15 +155,22 @@ switch ($action) {
       if ($pid && is_numeric($pid) && is_dir("/proc/$pid")) $hasDaemon = true;
     }
 
+    // pyserial is only required when the LD2410 radar feature is enabled.
+    // Most users don't have radar hardware, so do not flag it as missing
+    // unless they have explicitly turned it on in config.
+    $sledCfg     = @json_decode(@file_get_contents('/home/fpp/media/config/sled.json'), true);
+    $radarEnabled = !empty($sledCfg['ld2410']['enabled']);
+
     $missing = [];
-    if (!$hasSerial) $missing[] = "python3-serial";
+    if ($radarEnabled && !$hasSerial) $missing[] = "python3-serial";
 
     echo json_encode([
-      "ok"        => (count($missing) === 0),
-      "daemon_up" => $hasDaemon,
-      "pyserial"  => $hasSerial,
-      "missing"   => $missing,
-      "fix_cmd"   => count($missing) > 0
+      "ok"           => (count($missing) === 0),
+      "daemon_up"    => $hasDaemon,
+      "pyserial"     => $hasSerial,
+      "radar_enabled"=> $radarEnabled,
+      "missing"      => $missing,
+      "fix_cmd"      => count($missing) > 0
           ? "sudo apt-get install -y " . implode(" ", $missing)
           : "",
     ]);
