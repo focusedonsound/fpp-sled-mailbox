@@ -56,6 +56,19 @@ except: print('true')
         return 0
     fi
 
+    # Install / verify vendored Python packages (pyserial, paho-mqtt).
+    # Runs every start but install_vendor.py skips packages already present,
+    # so this is effectively instant after the first successful install.
+    # Running here (not in fpp_install.sh) guarantees network is available.
+    VENDOR_DIR="${PLUGIN_DIR}/scripts/vendor"
+    INSTALL_PY="${PLUGIN_DIR}/scripts/install_vendor.py"
+    if [[ -f "$INSTALL_PY" ]]; then
+        log "Checking vendored Python packages..."
+        python3 "$INSTALL_PY" "$VENDOR_DIR" >> "$LOG_FILE" 2>&1 \
+            && log "Vendor packages OK" \
+            || log "WARN: install_vendor.py had errors (non-fatal)"
+    fi
+
     log "Starting SLED daemon..."
     export PYTHONPATH="${PLUGIN_DIR}/scripts:${PYTHONPATH:-}"
     nohup python3 "$DAEMON" >> "$LOG_FILE" 2>&1 &
