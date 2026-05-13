@@ -53,13 +53,14 @@ CMD_QUEUE_FILE = "/home/fpp/media/logs/sled_trigger.cmd"
 PID_FILE       = "/home/fpp/media/logs/sled_daemon.pid"
 
 # ── Logging ────────────────────────────────────────────────────────────────────
+# Use FileHandler only — callbacks.sh redirects stdout to the same log file,
+# which would double every line if StreamHandler were also active.
 logging.basicConfig(
     level=logging.INFO,
     format="[%(asctime)s] [%(name)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
     handlers=[
         logging.FileHandler(LOG_FILE),
-        logging.StreamHandler(sys.stdout),
     ],
 )
 log = logging.getLogger("sled")
@@ -78,18 +79,16 @@ class FPPPlayer:
 
     _API = "http://localhost"
 
-    def _cmd(self, command: str, args: List[str] = None) -> Optional[dict]:
-        """POST an FPP command to the local API."""
+    def _cmd(self, command: str, args: List[str] = None) -> Optional[str]:
+        """GET an FPP command via /api/command/{cmd}/{arg1}/{arg2}/...
+        FPP 10.x uses GET with path-based arguments (POST returns 500)."""
         try:
-            url  = f"{self._API}/api/command/{urllib.parse.quote(command)}"
-            body = json.dumps({"args": [str(a) for a in (args or [])]}).encode()
-            req  = urllib.request.Request(
-                url, data=body,
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=3) as r:
-                return json.loads(r.read())
+            parts = [urllib.parse.quote(str(command), safe="")]
+            for a in (args or []):
+                parts.append(urllib.parse.quote(str(a), safe=""))
+            url = f"{self._API}/api/command/" + "/".join(parts)
+            with urllib.request.urlopen(url, timeout=3) as r:
+                return r.read().decode()
         except Exception as exc:
             log.debug("[FPP] command %r failed: %s", command, exc)
             return None
@@ -110,12 +109,13 @@ class FPPPlayer:
             return ""
         return status.get("current_playlist", {}).get("playlist", "")
 
-    def start_playlist(self, name: str) -> None:
-        """Start a named FPP playlist (non-blocking)."""
+    def start_playlist(self, name: str, repeat: bool = False) -> None:
+        """Start a named FPP playlist (non-blocking).
+        Pass repeat=True for the idle loop so it runs continuously."""
         if not name:
             return
-        log.info("[FPP] start playlist: %s", name)
-        self._cmd("Start Playlist At Item", [name, "1", "false", "false", "false"])
+        log.info("[FPP] start playlist: %s (repeat=%s)", name, repeat)
+        self._cmd("Start Playlist", [name, "true" if repeat else "false"])
 
     def stop(self) -> None:
         """Stop FPP playback immediately."""
@@ -406,7 +406,7 @@ def main() -> None:
 
     # ── Initial playback state ─────────────────────────────────────────────────
     if in_window(cfg):
-        fpp.start_playlist(pl_idle)
+        fpp.start_playlist(pl_idle, repeat=True)
     else:
         fpp.stop()
 
@@ -434,7 +434,7 @@ def main() -> None:
                 if now_inside != sched_inside:
                     sched_inside = now_inside
                     if now_inside:
-                        fpp.start_playlist(pl_idle)
+                        fpp.start_playlist(pl_idle, repeat=True)
                         log.info("[Schedule] Entered active window")
                     else:
                         fpp.stop()
@@ -532,7 +532,7 @@ def main() -> None:
                 db.log_event("letter", {"playlist": pl})
 
                 if in_window(cfg):
-                    fpp.start_playlist(pl_idle)
+                    fpp.start_playlist(pl_idle, repeat=True)
                 else:
                     fpp.stop()
                 continue
@@ -563,7 +563,7 @@ def main() -> None:
                 db.log_event("donation", {"playlist": pl})
 
                 if in_window(cfg):
-                    fpp.start_playlist(pl_idle)
+                    fpp.start_playlist(pl_idle, repeat=True)
                 else:
                     fpp.stop()
                 continue
