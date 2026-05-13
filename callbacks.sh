@@ -127,6 +127,12 @@ case "${1:-}" in
     "text": "SLED Smart Letters",
     "url":  "/plugin.php?plugin=fpp-sled-mailbox&page=www/index.php",
     "icon": "fas fa-fw fa-envelope-open-text"
+  },
+  {
+    "menu": "content",
+    "text": "SLED MQTT / Home Assistant",
+    "url":  "/plugin.php?plugin=fpp-sled-mailbox&page=www/mqtt.php",
+    "icon": "fas fa-fw fa-tower-broadcast"
   }
 ]
 JSON
