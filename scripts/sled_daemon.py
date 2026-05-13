@@ -183,8 +183,33 @@ class FPPPlayer:
             log.error("[FPP] Failed to write temp playlist: %s", exc)
             return
 
-        # Play it using the same play_once path (Start Playlist + wait for idle)
-        self.play_once(self._TEMP_PLAYLIST, timeout_s=timeout_s)
+        # Start the playlist
+        self._cmd("Start Playlist", [self._TEMP_PLAYLIST, "false"])
+
+        # Wait up to 3 s for FPP to begin playing
+        t0 = time.time()
+        while time.time() - t0 < 3.0 and not _shutdown.is_set():
+            raw = self._status()
+            if raw and raw.get("status_name") == "playing":
+                break
+            time.sleep(0.2)
+
+        # Wait for FPP to return to idle — track status_name, NOT playlist name.
+        # In FPP 9.x the current_playlist.playlist field drops to "" mid-play when
+        # FPP transitions from playlist-level to media-level playback, so using
+        # current_playlist() would give a false "finished" signal after ~5 s.
+        deadline = time.time() + timeout_s
+        while time.time() < deadline and not _shutdown.is_set():
+            raw  = self._status()
+            sname = (raw or {}).get("status_name", "idle")
+            log.debug("[FPP] play_file status: %s", sname)
+            if sname == "idle":
+                log.info("[FPP] play_file finished: %s", filename)
+                return
+            time.sleep(0.5)
+
+        log.warning("[FPP] play_file timeout for %r — stopping", filename)
+        self.stop()
 
     def play_once(self, name: str, timeout_s: int = 120) -> None:
         """
