@@ -399,6 +399,7 @@ def main() -> None:
     next_letter_idx:    int   = 0
     next_donation_idx:  int   = 0
     last_sched_check:   float = 0.0
+    last_idle_start_ts: float = 0.0
     sched_inside:       Optional[bool] = None
 
     parked_a = ParkedState("A", parked_timeout_s)
@@ -413,6 +414,7 @@ def main() -> None:
         # while fppd was mid-playlist — no need to stop/restart).
         if fpp.current_playlist() != pl_idle:
             fpp.start_playlist(pl_idle, repeat=True)
+            last_idle_start_ts = time.time()
     else:
         if fpp.current_playlist() != "":
             fpp.stop()
@@ -443,14 +445,26 @@ def main() -> None:
                     sched_inside = now_inside
                     if now_inside:
                         fpp.start_playlist(pl_idle, repeat=True)
+                        last_idle_start_ts = time.time()
                         log.info("[Schedule] Entered active window")
                     else:
                         fpp.stop()
                         log.info("[Schedule] Left active window")
-                elif now_inside and fpp.current_playlist() != pl_idle:
-                    # Inside window but idle stopped (fppd restart, VLC error, etc.)
-                    log.info("[Schedule] Idle stopped unexpectedly — resuming")
-                    fpp.start_playlist(pl_idle, repeat=True)
+                elif now_inside:
+                    # Inside the window — check whether idle is genuinely stopped.
+                    # Read full status so we can inspect status_name: if fppd timed
+                    # out or is mid-start (status="playing") don't restart.
+                    # Also skip the check within 10s of our last start_playlist(idle)
+                    # call to avoid false-positive watchdog fires during VLC startup.
+                    _cooldown_ok = (now_ts - last_idle_start_ts) > 10.0
+                    _raw = fpp._status()
+                    if _raw is not None and _cooldown_ok:
+                        _cur   = _raw.get("current_playlist", {}).get("playlist", "")
+                        _sname = _raw.get("status_name", "")
+                        if _cur != pl_idle and _sname not in ("playing", "stopping"):
+                            log.info("[Schedule] Idle stopped (status=%s) — resuming", _sname)
+                            fpp.start_playlist(pl_idle, repeat=True)
+                            last_idle_start_ts = time.time()
 
             # ── Parked-car timeout ticks ───────────────────────────────────────
             parked_a.tick(now_ts, db)
@@ -545,6 +559,7 @@ def main() -> None:
 
                 if in_window(cfg):
                     fpp.start_playlist(pl_idle, repeat=True)
+                    last_idle_start_ts = time.time()
                 else:
                     fpp.stop()
                 continue
@@ -576,6 +591,7 @@ def main() -> None:
 
                 if in_window(cfg):
                     fpp.start_playlist(pl_idle, repeat=True)
+                    last_idle_start_ts = time.time()
                 else:
                     fpp.stop()
                 continue
