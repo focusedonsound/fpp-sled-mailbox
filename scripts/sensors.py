@@ -34,6 +34,14 @@ from typing import Any, Dict, Optional
 #  Note: FPP must NOT have these GPIO pins configured in gpio.json.
 #        If fppd claims a pin first, both backends fail with EINVAL.
 #        save.php removes SLED entries from gpio.json to prevent this.
+#
+# ── lgpio cwd fix ─────────────────────────────────────────────────────────────
+# On Raspberry Pi OS Bookworm, RPi.GPIO uses lgpio as its backend.  lgpio
+# creates notification FIFOs using cwd-relative paths (.lgd-nfyN).  FPP sets
+# the daemon's cwd to /opt/fpp/www which doesn't exist, so lgpio crashes at
+# import time with FileNotFoundError.  Switching to /tmp before any GPIO import
+# gives lgpio a writable directory for its FIFOs.
+os.chdir('/tmp')
 
 try:
     from gpiozero import Button as _GpiozeroButton          # type: ignore
