@@ -405,10 +405,17 @@ def main() -> None:
     parked_b = ParkedState("B", parked_timeout_s)
 
     # ── Initial playback state ─────────────────────────────────────────────────
-    if in_window(cfg):
-        fpp.start_playlist(pl_idle, repeat=True)
+    # Initialise sched_inside to the current window state so the first schedule
+    # tick doesn't redundantly "enter" the window and call start_playlist again.
+    sched_inside: Optional[bool] = in_window(cfg)
+    if sched_inside:
+        # Only start idle if FPP isn't already playing it (e.g. daemon restarted
+        # while fppd was mid-playlist — no need to stop/restart).
+        if fpp.current_playlist() != pl_idle:
+            fpp.start_playlist(pl_idle, repeat=True)
     else:
-        fpp.stop()
+        if fpp.current_playlist() != "":
+            fpp.stop()
 
     log.info("SLED daemon running (PID=%d)", os.getpid())
 
@@ -432,6 +439,7 @@ def main() -> None:
                 last_sched_check = now_ts
                 now_inside = in_window(cfg)
                 if now_inside != sched_inside:
+                    # Window boundary crossed — start or stop idle
                     sched_inside = now_inside
                     if now_inside:
                         fpp.start_playlist(pl_idle, repeat=True)
@@ -439,6 +447,10 @@ def main() -> None:
                     else:
                         fpp.stop()
                         log.info("[Schedule] Left active window")
+                elif now_inside and fpp.current_playlist() != pl_idle:
+                    # Inside window but idle stopped (fppd restart, VLC error, etc.)
+                    log.info("[Schedule] Idle stopped unexpectedly — resuming")
+                    fpp.start_playlist(pl_idle, repeat=True)
 
             # ── Parked-car timeout ticks ───────────────────────────────────────
             parked_a.tick(now_ts, db)
