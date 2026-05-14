@@ -147,10 +147,41 @@ $serialPorts = listSerialPorts();
 #sledDepBanner .btn-close {
   filter: brightness(0) saturate(100%) opacity(.5);
 }
+/* ── Mobile responsiveness ──────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  /* Header: wrap onto two lines — title+pill first, donate buttons second */
+  .sled-page-header { flex-wrap: wrap !important; row-gap: .5rem; }
+  .sled-page-header > div:first-child { flex: 1 1 100%; min-width: 0; }
+  .sled-page-header h2 { font-size: 1.05rem; }
+  #sledDaemonPill { font-size: .7rem !important; padding: .2rem .45rem !important; }
+  .sled-donate-row { flex-wrap: wrap; width: 100%; }
+
+  /* 4-column table rows → 2 side-by-side pairs (label | input, label | input) */
+  .sled-table-4col tbody tr { display: flex; flex-wrap: wrap; }
+  .sled-table-4col tbody td {
+    width: 50% !important;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+  /* Cells that span full width (e.g. colspan, or the Radar Diagnostics button cell) */
+  .sled-table-4col td[colspan],
+  .sled-table-4col td.sled-full-row { width: 100% !important; }
+
+  /* Prevent fixed-width input-groups from overflowing their 50%-wide cell */
+  .sled-table-4col .input-group { max-width: 100% !important; }
+  .sled-table-4col select { max-width: 100%; }
+
+  /* GPIO wiring guide: hide the right-hand hint column */
+  .sled-hint-col { display: none; }
+
+  /* Daemon badge: ensure it aligns left when buttons wrap */
+  #sledDaemonCtrl { row-gap: .4rem; }
+  #sledDaemonBadge { align-self: flex-start; }
+}
 </style>
 
-<div class="d-flex justify-content-between align-items-center mb-2">
-  <div class="d-flex align-items-center gap-3">
+<div class="d-flex justify-content-between align-items-center mb-2 sled-page-header">
+  <div class="d-flex align-items-center gap-3 flex-wrap">
     <h2 class="mb-0">
       <i class="fas fa-fw fa-mailbox"></i> SLED &mdash; Smart Letters to Santa
     </h2>
@@ -164,14 +195,14 @@ $serialPorts = listSerialPorts();
       <span id="sledDaemonPillText"><?php echo $running ? 'Daemon Running' : 'Daemon Stopped'; ?></span>
     </span>
   </div>
-  <div class="d-flex align-items-center gap-2">
+  <div class="d-flex align-items-center gap-2 sled-donate-row">
     <a href="https://buymeacoffee.com/jm9pwtesct" target="_blank" rel="noopener noreferrer"
        class="sled-btn">
       <i class="fas fa-fw fa-mug-hot"></i> Buy Me a Coffee
     </a>
     <a href="https://paypal.me/NScilingo" target="_blank" rel="noopener noreferrer"
        class="sled-btn">
-      <i class="fab fa-fw fa-paypal"></i> Donate via PayPal
+      <i class="fas fa-fw fa-hand-holding-dollar"></i> Donate via PayPal
     </a>
   </div>
 </div>
@@ -364,7 +395,7 @@ $serialPorts = listSerialPorts();
   <!-- ── Sensors / GPIO ──────────────────────────────────────────────── -->
   <div class="fppTableWrapper fppTableWrapperAsTable mb-3">
     <div class="fppTableContents fppFThScrollContainer">
-      <table class="fppSelectableRowTable" style="width:100%;">
+      <table class="fppSelectableRowTable sled-table-4col" style="width:100%;">
         <thead>
           <tr>
             <th colspan="4" style="padding:8px;">
@@ -433,7 +464,7 @@ $serialPorts = listSerialPorts();
   <!-- ── Schedule ────────────────────────────────────────────────────── -->
   <div class="fppTableWrapper fppTableWrapperAsTable mb-3">
     <div class="fppTableContents fppFThScrollContainer">
-      <table class="fppSelectableRowTable" style="width:100%;">
+      <table class="fppSelectableRowTable sled-table-4col" style="width:100%;">
         <thead>
           <tr>
             <th colspan="4" style="padding:8px;">
@@ -467,7 +498,7 @@ $serialPorts = listSerialPorts();
   <!-- ── Car Counter (LD2410) ────────────────────────────────────────── -->
   <div class="fppTableWrapper fppTableWrapperAsTable mb-3">
     <div class="fppTableContents fppFThScrollContainer">
-      <table class="fppSelectableRowTable" style="width:100%;">
+      <table class="fppSelectableRowTable sled-table-4col" style="width:100%;">
         <thead>
           <tr>
             <th colspan="4" style="padding:8px;">
@@ -782,7 +813,7 @@ $serialPorts = listSerialPorts();
   </div>
 
   <!-- ── Daemon Controls ───────────────────────────────────────────────── -->
-  <div class="d-flex flex-wrap gap-2 mb-4 align-items-center">
+  <div id="sledDaemonCtrl" class="d-flex flex-wrap gap-2 mb-4 align-items-center">
     <button type="button" class="sled-btn" id="sledStartBtn"
             onclick="sledStartDaemon()"
             title="Start the SLED daemon"
@@ -865,22 +896,22 @@ $serialPorts = listSerialPorts();
         <tr>
           <td style="padding:8px; width:30px; text-align:center;"><strong>1</strong></td>
           <td style="padding:8px;">Go to <strong>GPIO</strong> in the FPP menu</td>
-          <td style="padding:8px; color:var(--bs-secondary);">Content Setup &rarr; GPIO</td>
+          <td class="sled-hint-col" style="padding:8px; color:var(--bs-secondary);">Content Setup &rarr; GPIO</td>
         </tr>
         <tr>
           <td style="padding:8px; text-align:center;"><strong>2</strong></td>
           <td style="padding:8px;">Add a new Input using the <strong>Letter Pin</strong> number above</td>
-          <td style="padding:8px; color:var(--bs-secondary);">Pull-up, active LOW (beam break)</td>
+          <td class="sled-hint-col" style="padding:8px; color:var(--bs-secondary);">Pull-up, active LOW (beam break)</td>
         </tr>
         <tr>
           <td style="padding:8px; text-align:center;"><strong>3</strong></td>
           <td style="padding:8px;">Set the action to <strong>FPP Command</strong> &rarr; <em>SLED &ndash; Trigger Letter</em></td>
-          <td style="padding:8px; color:var(--bs-secondary);">Trigger on: Falling edge</td>
+          <td class="sled-hint-col" style="padding:8px; color:var(--bs-secondary);">Trigger on: Falling edge</td>
         </tr>
         <tr>
           <td style="padding:8px; text-align:center;"><strong>4</strong></td>
           <td style="padding:8px;">Repeat for the Donation Pin using <em>SLED &ndash; Trigger Donation</em></td>
-          <td style="padding:8px; color:var(--bs-secondary);">Optional</td>
+          <td class="sled-hint-col" style="padding:8px; color:var(--bs-secondary);">Optional</td>
         </tr>
       </tbody>
     </table>
