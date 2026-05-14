@@ -921,6 +921,21 @@ $serialPorts = listSerialPorts();
 <?php include __DIR__ . '/radar_diag.php'; ?>
 
 <script>
+// ── Tooltip deduplication ─────────────────────────────────────────────────
+// FPP loads plugin pages via AJAX into a persistent container. Bootstrap 5
+// initialises tooltips on every [title] element after each injection.
+// On the second+ visit the same DOM elements still carry their previous
+// tooltip instances, so a new init triggers "doesn't allow more than one
+// instance per element". Disposing stale instances here (before FPP's init
+// runs) keeps the console clean.  First-load: getInstance → null, no-op.
+(function sledDisposeStaleTooltips() {
+  if (typeof bootstrap === 'undefined' || !bootstrap.Tooltip) return;
+  document.querySelectorAll('[title]').forEach(function(el) {
+    var t = bootstrap.Tooltip.getInstance(el);
+    if (t) t.dispose();
+  });
+})();
+
 const SLED_BASE = (typeof pluginBase !== 'undefined' && pluginBase)
   ? pluginBase : 'plugin.php?plugin=fpp-sled-mailbox&';
 const SLED_URL  = SLED_BASE + 'nopage=1&page=www/';
