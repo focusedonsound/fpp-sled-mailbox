@@ -17,38 +17,66 @@ log() {
 log "=== SLED Santa Mailbox install started (user=$(whoami), uid=$(id -u)) ==="
 
 # ── Git state self-repair ─────────────────────────────────────────
-# fpp_install.sh is called after FPP's git pull attempt. If the pull
-# failed (SSH remote, detached HEAD, missing upstream, etc.) we repair
-# the repo here so the next FPP update cycle works cleanly.
+# fpp_install.sh is called after FPP's git pull attempt (whether or not
+# it succeeded). This block repairs common failure modes so the plugin
+# always ends up at the latest origin/main and future updates work.
+#
+# Failures handled:
+#  1. SSH remote  — Pi has no GitHub SSH key; switch to HTTPS
+#  2. Detached HEAD — git pull refuses to run; reset to origin/main
+#  3. No upstream  — git pull has nothing to pull from; set tracking
+#  4. Execute-bit drift — fpp_install.sh chmod+x makes git see tracked
+#     shell/py files as locally modified; git pull refuses to overwrite.
+#     (Caused by commits made from /tmp which strips execute bits.)
 (
     cd "$PLUGIN_DIR" 2>/dev/null || exit 0
 
     EXPECTED_URL="https://github.com/focusedonsound/fpp-sled-mailbox.git"
     CURRENT_URL=$(git remote get-url origin 2>/dev/null || echo "")
 
-    # Fix SSH → HTTPS remote so updates work without GitHub SSH keys
-    if [[ "$CURRENT_URL" == git@github.com:* || "$CURRENT_URL" != "$EXPECTED_URL" ]]; then
-        log "Fixing git remote URL: $CURRENT_URL → $EXPECTED_URL"
-        git remote set-url origin "$EXPECTED_URL" 2>/dev/null && log "Remote URL fixed" || log "WARN: could not fix remote URL"
+    # 1. Fix SSH → HTTPS remote so updates work without GitHub SSH keys
+    if [[ "$CURRENT_URL" == git@github.com:* ]] || \
+       [[ -n "$CURRENT_URL" && "$CURRENT_URL" != "$EXPECTED_URL" ]]; then
+        log "Fixing git remote: $CURRENT_URL → $EXPECTED_URL"
+        git remote set-url origin "$EXPECTED_URL" 2>/dev/null \
+            && log "Remote fixed" || log "WARN: could not fix remote URL"
     fi
 
-    # Fetch latest from origin (needed for branch repair below)
+    # Fetch latest so origin/main ref is up-to-date for all checks below
     git fetch origin main 2>/dev/null || true
 
-    # Fix detached HEAD or missing upstream
     BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+
     if [[ "$BRANCH" == "HEAD" || -z "$BRANCH" ]]; then
-        log "Detached HEAD detected — resetting to origin/main"
+        # 2. Detached HEAD — create/reset local main branch
+        log "Detached HEAD — resetting to origin/main"
         git checkout -B main --track origin/main 2>/dev/null \
             && git reset --hard origin/main 2>/dev/null \
-            && log "Git repair OK: now at $(git log --oneline -1 2>/dev/null)" \
-            || log "WARN: git HEAD repair failed"
-    elif ! git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1; then
-        log "No upstream — setting origin/main tracking and resetting"
-        git branch --set-upstream-to=origin/main main 2>/dev/null \
-            && git reset --hard origin/main 2>/dev/null \
-            && log "Git upstream repair OK: now at $(git log --oneline -1 2>/dev/null)" \
-            || log "WARN: git upstream repair failed"
+            && log "Repair OK: $(git log --oneline -1 2>/dev/null)" \
+            || log "WARN: HEAD repair failed"
+    else
+        # Ensure main tracks origin/main
+        git branch --set-upstream-to=origin/main main 2>/dev/null || true
+
+        # 3+4. Reset any local modifications (missing upstream OR execute-bit
+        # drift) then fast-forward to origin/main if still behind.
+        if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+            log "Local modifications detected (execute-bit drift?) — resetting tracked files"
+            git reset --hard origin/main 2>/dev/null \
+                && log "Reset OK: $(git log --oneline -1 2>/dev/null)" \
+                || log "WARN: reset failed"
+        fi
+
+        LOCAL=$(git rev-parse HEAD 2>/dev/null || echo "local")
+        REMOTE=$(git rev-parse origin/main 2>/dev/null || echo "remote")
+        if [[ "$LOCAL" != "$REMOTE" ]]; then
+            log "Behind origin/main — fast-forwarding"
+            git merge --ff-only origin/main 2>/dev/null \
+                && log "Updated: $(git log --oneline -1 2>/dev/null)" \
+                || log "WARN: fast-forward failed"
+        fi
+
+        log "Git OK: $(git log --oneline -1 2>/dev/null)"
     fi
 )
 
