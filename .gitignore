@@ -1,0 +1,11 @@
+# Vendored Python packages installed by fpp_install.sh at runtime
+scripts/vendor/
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Runtime files
+*.pid
+*.log
