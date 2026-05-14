@@ -79,7 +79,14 @@ $cfg["direction"]["label_toward"]     = pStr("label_toward", "Inbound")  ?: "Inb
 $cfg["direction"]["label_away"]       = pStr("label_away",   "Outbound") ?: "Outbound";
 
 // ── Auto-start (daemon enabled at FPP boot) ───────────────────────────────
-$cfg["enabled"] = pBool("enabled");
+// Only update if the new form section is present (hidden sentinel).
+// Without this guard, submitting an old cached form (which lacks the
+// enabled checkbox) would call pBool("enabled") → false and silently
+// disable auto-start even though the user never touched the toggle.
+if (isset($_POST['_sled_form_v2'])) {
+    $cfg["enabled"] = pBool("enabled");
+}
+// else: preserve whatever is already in the config (defaults to true via callbacks.sh)
 
 // ── Telemetry ─────────────────────────────────────────────────────────────
 // Preserve existing install_id or generate one on first save

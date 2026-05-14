@@ -231,6 +231,10 @@ $serialPorts = listSerialPorts();
 <datalist id="fppMediaFiles"></datalist>
 
 <form id="sledForm" onsubmit="return false;">
+  <!-- Sentinel: tells save.php this form version has the enabled toggle.
+       Without it, pBool("enabled") would silently return false for cached
+       old-form submissions and disable auto-start. -->
+  <input type="hidden" name="_sled_form_v2" value="1" />
 
   <!-- ── Plugin Settings ─────────────────────────────────────────────── -->
   <div class="fppTableWrapper fppTableWrapperAsTable mb-3">
