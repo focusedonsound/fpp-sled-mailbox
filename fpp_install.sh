@@ -16,6 +16,42 @@ log() {
 
 log "=== SLED Santa Mailbox install started (user=$(whoami), uid=$(id -u)) ==="
 
+# ── Git state self-repair ─────────────────────────────────────────
+# fpp_install.sh is called after FPP's git pull attempt. If the pull
+# failed (SSH remote, detached HEAD, missing upstream, etc.) we repair
+# the repo here so the next FPP update cycle works cleanly.
+(
+    cd "$PLUGIN_DIR" 2>/dev/null || exit 0
+
+    EXPECTED_URL="https://github.com/focusedonsound/fpp-sled-mailbox.git"
+    CURRENT_URL=$(git remote get-url origin 2>/dev/null || echo "")
+
+    # Fix SSH → HTTPS remote so updates work without GitHub SSH keys
+    if [[ "$CURRENT_URL" == git@github.com:* || "$CURRENT_URL" != "$EXPECTED_URL" ]]; then
+        log "Fixing git remote URL: $CURRENT_URL → $EXPECTED_URL"
+        git remote set-url origin "$EXPECTED_URL" 2>/dev/null && log "Remote URL fixed" || log "WARN: could not fix remote URL"
+    fi
+
+    # Fetch latest from origin (needed for branch repair below)
+    git fetch origin main 2>/dev/null || true
+
+    # Fix detached HEAD or missing upstream
+    BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+    if [[ "$BRANCH" == "HEAD" || -z "$BRANCH" ]]; then
+        log "Detached HEAD detected — resetting to origin/main"
+        git checkout -B main --track origin/main 2>/dev/null \
+            && git reset --hard origin/main 2>/dev/null \
+            && log "Git repair OK: now at $(git log --oneline -1 2>/dev/null)" \
+            || log "WARN: git HEAD repair failed"
+    elif ! git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1; then
+        log "No upstream — setting origin/main tracking and resetting"
+        git branch --set-upstream-to=origin/main main 2>/dev/null \
+            && git reset --hard origin/main 2>/dev/null \
+            && log "Git upstream repair OK: now at $(git log --oneline -1 2>/dev/null)" \
+            || log "WARN: git upstream repair failed"
+    fi
+)
+
 # ── Create media directories ─────────────────────────────────────
 # Do this FIRST so the media log path is available.
 mkdir -p /home/fpp/media/logs
