@@ -1,7 +1,7 @@
 {
   "repoName": "fpp-sled-mailbox",
   "name": "SLED Smart Letters to Santa",
-  "author": "Nick Scilingo Nick S(NJ)",
+  "author": "Nick Scilingo (FocusedOnSound)",
   "description": "SLED (Smart Letters Express Delivery) — sensor-driven video playback, car counting, and Home Assistant integration for interactive Santa Mailbox displays. Supports GPIO letter/donation sensors, HLK-LD2410B radar car detection, MQTT/HA discovery, and SQLite-backed analytics dashboard.",
   "homeURL": "https://github.com/focusedonsound/fpp-sled-mailbox",
   "srcURL": "https://github.com/focusedonsound/fpp-sled-mailbox.git",
