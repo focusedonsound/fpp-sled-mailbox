@@ -78,6 +78,9 @@ $cfg["direction"]["toward_reference"] = in_array($ref, $validRef) ? $ref : "AB";
 $cfg["direction"]["label_toward"]     = pStr("label_toward", "Inbound")  ?: "Inbound";
 $cfg["direction"]["label_away"]       = pStr("label_away",   "Outbound") ?: "Outbound";
 
+// ── Auto-start (daemon enabled at FPP boot) ───────────────────────────────
+$cfg["enabled"] = pBool("enabled");
+
 // ── Telemetry ─────────────────────────────────────────────────────────────
 // Preserve existing install_id or generate one on first save
 $existingId = $cfg["telemetry"]["install_id"] ?? "";

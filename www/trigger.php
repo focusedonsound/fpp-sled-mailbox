@@ -211,6 +211,31 @@ switch ($action) {
     exit;
   }
 
+  // ── Daemon stop ───────────────────────────────────────────────────────────
+  case 'daemon_stop':
+    @exec("pkill -TERM -f sled_daemon.py 2>/dev/null");
+    $waited = 0;
+    while (trim(shell_exec("pgrep -f sled_daemon.py 2>/dev/null") ?: "") !== "" && $waited < 40) {
+        usleep(100000);
+        $waited++;
+    }
+    @exec("pkill -KILL -f sled_daemon.py 2>/dev/null");
+    @unlink("/home/fpp/media/logs/sled_daemon.pid");
+    respond(true, "Daemon stopped.");
+
+  // ── Daemon start (without full restart) ──────────────────────────────────
+  case 'daemon_start':
+    $spidFile = "/home/fpp/media/logs/sled_daemon.pid";
+    if (file_exists($spidFile)) {
+        $spid = trim(@file_get_contents($spidFile));
+        if ($spid && is_numeric($spid) && is_dir("/proc/$spid"))
+            respond(false, "Daemon is already running (PID $spid).");
+    }
+    if (!$callbacks || !file_exists($callbacks))
+        respond(false, "callbacks.sh not found");
+    @exec("bash " . escapeshellarg($callbacks) . " pluginStart > /dev/null 2>&1 &");
+    respond(true, "Daemon start initiated.");
+
   default:
     respond(false, "Unknown action: " . htmlspecialchars($action));
 }

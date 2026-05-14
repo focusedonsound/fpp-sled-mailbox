@@ -201,6 +201,35 @@ $serialPorts = listSerialPorts();
 
 <form id="sledForm" onsubmit="return false;">
 
+  <!-- ── Plugin Settings ─────────────────────────────────────────────── -->
+  <div class="fppTableWrapper fppTableWrapperAsTable mb-3">
+    <div class="fppTableContents fppFThScrollContainer">
+      <table class="fppSelectableRowTable" style="width:100%;">
+        <thead>
+          <tr>
+            <th colspan="2" style="padding:8px;">
+              <i class="fas fa-fw fa-gears"></i> Plugin Settings
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="width:220px; padding:8px;">
+              <label class="mb-0" for="sledAutoStart">Auto-start Daemon on FPP Boot</label>
+              <div class="text-muted small">Start the SLED daemon automatically whenever FPP starts</div>
+            </td>
+            <td style="padding:8px;">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="enabled" id="sledAutoStart"
+                       value="1" <?php echo ($cfg['enabled'] ?? true) ? 'checked' : ''; ?> />
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- ── Idle Playlist ────────────────────────────────────────────────── -->
   <div class="fppTableWrapper fppTableWrapperAsTable mb-3">
     <div class="fppTableContents fppFThScrollContainer">
@@ -739,8 +768,8 @@ $serialPorts = listSerialPorts();
     </div>
   </div>
 
-  <!-- ── Save + Test + Daemon ─────────────────────────────────────────── -->
-  <div class="d-flex flex-wrap gap-2 mb-4">
+  <!-- ── Save + Test ──────────────────────────────────────────────────── -->
+  <div class="d-flex flex-wrap gap-2 mb-2">
     <button type="button" class="sled-btn" onclick="sledSave()">
       <i class="fas fa-fw fa-save"></i> Save Settings
     </button>
@@ -750,8 +779,26 @@ $serialPorts = listSerialPorts();
     <button type="button" class="sled-btn" onclick="sledTrigger('donation')">
       <i class="fas fa-fw fa-gift"></i> Test Donation
     </button>
-    <button type="button" class="sled-btn" onclick="sledRestart()"
-            title="Kill and restart the SLED car-counter daemon. Use this after saving settings or after a plugin update.">
+  </div>
+
+  <!-- ── Daemon Controls ───────────────────────────────────────────────── -->
+  <div class="d-flex flex-wrap gap-2 mb-4 align-items-center">
+    <button type="button" class="sled-btn" id="sledStartBtn"
+            onclick="sledStartDaemon()"
+            title="Start the SLED daemon"
+            <?php echo $running ? 'disabled' : ''; ?>>
+      <i class="fas fa-fw fa-play"></i> Start Daemon
+    </button>
+    <button type="button" class="sled-btn" id="sledStopBtn"
+            onclick="sledStopDaemon()"
+            title="Stop the SLED daemon without restarting it"
+            <?php echo !$running ? 'disabled' : ''; ?>>
+      <i class="fas fa-fw fa-stop"></i> Stop Daemon
+    </button>
+    <button type="button" class="sled-btn" id="sledRestartBtn"
+            onclick="sledRestart()"
+            title="Kill and restart the SLED daemon. Use this after saving settings or after a plugin update."
+            <?php echo !$running ? 'disabled' : ''; ?>>
       <i class="fas fa-fw fa-rotate-right"></i> Restart Daemon
     </button>
     <button type="button" class="sled-btn sled-btn-sm" onclick="sledShowLog()"
@@ -879,20 +926,34 @@ async function sledRestart() {
   const res = await fetch(sledUrl('trigger.php') + '&action=restart', { cache:'no-store' });
   const j   = await sledJson(res);
   sledNotify(j.message || (j.status==='OK' ? 'Daemon restarting.' : 'Restart failed.'), j.status !== 'OK');
-  // Refresh daemon badge + header pill after a short delay
-  setTimeout(async () => {
-    try {
-      const r = await fetch(sledUrl('trigger.php') + '&action=depcheck', { cache:'no-store' });
-      const d = await r.json();
-      const badge = document.getElementById('sledDaemonBadge');
-      if (badge) {
-        badge.className = 'badge ' + (d.daemon_up ? 'bg-success' : 'bg-secondary') + ' align-self-center';
-        badge.innerHTML = '<i class="fas fa-fw ' + (d.daemon_up ? 'fa-circle-check' : 'fa-circle-xmark') + '"></i> '
-                        + (d.daemon_up ? 'Daemon running' : 'Daemon stopped');
-      }
-      sledUpdateDaemonPill(d.daemon_up);
-    } catch(e) {}
-  }, 3000);
+  setTimeout(sledRefreshDaemonStatus, 3000);
+}
+
+// ── Start daemon ──────────────────────────────────────────────────────────
+async function sledStartDaemon() {
+  sledNotify('Starting daemon…', false);
+  const res = await fetch(sledUrl('trigger.php') + '&action=daemon_start', { cache:'no-store' });
+  const j   = await sledJson(res);
+  sledNotify(j.message || (j.status==='OK' ? 'Daemon starting.' : 'Start failed.'), j.status !== 'OK');
+  setTimeout(sledRefreshDaemonStatus, 2500);
+}
+
+// ── Stop daemon ───────────────────────────────────────────────────────────
+async function sledStopDaemon() {
+  sledNotify('Stopping daemon…', false);
+  const res = await fetch(sledUrl('trigger.php') + '&action=daemon_stop', { cache:'no-store' });
+  const j   = await sledJson(res);
+  sledNotify(j.message || (j.status==='OK' ? 'Daemon stopped.' : 'Stop failed.'), j.status !== 'OK');
+  setTimeout(sledRefreshDaemonStatus, 1500);
+}
+
+// ── Refresh daemon status (pill + badge + buttons) ────────────────────────
+async function sledRefreshDaemonStatus() {
+  try {
+    const r = await fetch(sledUrl('trigger.php') + '&action=depcheck', { cache:'no-store' });
+    const d = await r.json();
+    sledUpdateDaemonPill(d.daemon_up);
+  } catch(e) {}
 }
 
 // ── Daemon log viewer ─────────────────────────────────────────────────────
@@ -1057,13 +1118,29 @@ function sledToggle(id, enabled) {
   if (el) el.style.opacity = enabled ? '1' : '0.4';
 }
 
-// ── Daemon status pill (title bar) ───────────────────────────────────────────
+// ── Daemon status pill + badge + button state ─────────────────────────────
 function sledUpdateDaemonPill(isRunning) {
+  // Header pill
   const pill = document.getElementById('sledDaemonPill');
   const text = document.getElementById('sledDaemonPillText');
-  if (!pill || !text) return;
-  pill.style.backgroundColor = isRunning ? '#198754' : '#dc3545';
-  text.textContent = isRunning ? 'Daemon Running' : 'Daemon Stopped';
+  if (pill) pill.style.backgroundColor = isRunning ? '#198754' : '#dc3545';
+  if (text) text.textContent = isRunning ? 'Daemon Running' : 'Daemon Stopped';
+
+  // Badge in button bar
+  const badge = document.getElementById('sledDaemonBadge');
+  if (badge) {
+    badge.className = 'badge ' + (isRunning ? 'bg-success' : 'bg-secondary') + ' align-self-center';
+    badge.innerHTML = '<i class="fas fa-fw ' + (isRunning ? 'fa-circle-check' : 'fa-circle-xmark') + '"></i> '
+                    + (isRunning ? 'Daemon running' : 'Daemon stopped');
+  }
+
+  // Enable / disable daemon control buttons
+  const startBtn   = document.getElementById('sledStartBtn');
+  const stopBtn    = document.getElementById('sledStopBtn');
+  const restartBtn = document.getElementById('sledRestartBtn');
+  if (startBtn)   startBtn.disabled   = isRunning;
+  if (stopBtn)    stopBtn.disabled    = !isRunning;
+  if (restartBtn) restartBtn.disabled = !isRunning;
 }
 
 // ── Dependency health check ───────────────────────────────────────────────
@@ -1087,7 +1164,7 @@ function sledUpdateDaemonPill(isRunning) {
     if (!banner || !msgEl) return;
 
     const items = [];
-    if (daemonDown) items.push('<strong>SLED daemon is not running</strong> — use the Restart Daemon button below');
+    if (daemonDown) items.push('<strong>SLED daemon is not running</strong> — use the <strong>Start Daemon</strong> button below to start it, or check the log for errors');
     // Only mention pyserial if radar is enabled and it is genuinely missing
     if (j.radar_enabled && !j.pyserial)
       items.push('<strong>python3-serial</strong> is required for radar/USB communication');
