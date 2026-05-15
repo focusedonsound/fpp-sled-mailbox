@@ -12,6 +12,16 @@
 
 > **Transform a humble Christmas mailbox prop into a magical, fully interactive Santa experience — complete with sensor-triggered videos, radar car counting, donation tracking, Home Assistant integration, and a live analytics dashboard. When a child drops a letter in the slot, the magic begins. ✨**
 
+<p align="center">
+  <a href="https://youtu.be/lKsuSaLmaug" target="_blank">
+    <img src="https://img.youtube.com/vi/lKsuSaLmaug/maxresdefault.jpg"
+         alt="SLED Santa Mailbox — Build &amp; Demo Video"
+         width="720" style="border-radius:8px;" />
+  </a>
+  <br/>
+  <em>▶ Watch the Build &amp; Demo Video on YouTube</em>
+</p>
+
 ---
 
 ## 🎄 Table of Contents
@@ -20,6 +30,7 @@
 - [Feature Overview](#-feature-overview)
 - [How It Works (Architecture)](#-how-it-works-architecture)
 - [Hardware You'll Need](#-hardware-youll-need)
+- [Building the Enclosure](#-building-the-enclosure)
 - [Wiring Guide](#-wiring-guide)
 - [Installation](#-installation)
 - [Configuration](#️-configuration)
@@ -28,7 +39,7 @@
 - [Home Assistant Integration](#-home-assistant--mqtt-integration)
 - [Analytics Dashboard](#-analytics-dashboard)
 - [FPP Commands](#-fpp-commands)
-- [Schedule / Active Hours](#️-schedule--active-hours)
+- [Schedule / Active Hours](#️-schedule--active-hours-fpp-scheduler)
 - [Daemon Controls](#️-daemon-controls)
 - [Optional: Temperature Sensor](#-optional-dht11-temperaturehumidity-sensor)
 - [Troubleshooting](#-troubleshooting)
@@ -57,7 +68,7 @@ SLED is a **production-grade prop controller** built by a Christmas lighting ent
 | 💰 Donation Sensor | Optional second GPIO → separate video list |
 | 📺 FPP Video Integration | REST API video/playlist control, idle loop, play timeout |
 | 📡 Dual Radar | HLK-LD2410B car counting, direction detection, parked detection |
-| 🕐 Schedule | Active-hours enforcement (e.g., 4 PM–10 PM) |
+| 🕐 Schedule | Active-hours controlled via FPP's native Scheduler |
 | 📶 MQTT + HA | Auto-discovery, LWT, all counters published live |
 | 🗄️ SQLite Analytics | Every event logged with timestamp, today/total counters |
 | 📊 Dashboard | Live chart (7/30/90/365 day views) in FPP UI |
@@ -167,6 +178,66 @@ SLED is a **production-grade prop controller** built by a Christmas lighting ent
 - **IR break-beam**: Adafruit #2168 (3mm) or #2167 (5mm), or Amazon
 - **USB-serial adapters**: Amazon — CH340G is cheap and reliable
 - **DHT11**: Any electronics supplier, ~$2
+
+---
+
+## 🔨 Building the Enclosure
+
+The SLED prop is built around a **birdhouse-style PVC enclosure** sized to house a 24″ monitor. The design is weather-resistant, easy to paint in a Santa red/white theme, and built to last multiple seasons.
+
+<p align="center">
+  <img src="https://github.com/focusedonsound/sled-mailbox/raw/main/docs/media/mailbox_design.png"
+       alt="SLED Mailbox Enclosure Design" width="680" />
+</p>
+
+> 📐 **Full build dimensions, cut list, and materials are below.** Electronics (Raspberry Pi, display, sensors, power supplies) are covered in the [Hardware](#-hardware-youll-need) section.
+
+---
+
+### 📐 Overall Dimensions
+
+Birdhouse-style enclosure sized to hold a 24″ monitor and internal frame:
+
+| Panel | Dimensions |
+|---|---|
+| Front / Back panels | 22″ wide × 62″ tall (to peak) |
+| Side panels | 8″ deep × 31″ lower wall + 23″ upper peak section |
+| Bottom panel | 22″ × 8″ |
+| Roof panels | 24″ × 10″ (two pieces) |
+
+---
+
+### 🪵 Internal Frame Members
+
+The internal frame is built from pressure-treated 2×4 lumber:
+
+| Member | Size | Notes |
+|---|---|---|
+| Corner posts | ~31″ lower + ~23″ upper per corner | Full-height structural support |
+| Ridge cleat | 22″ | Ties the two roof peaks together at the top |
+| Monitor brace | 22″ | Horizontal brace behind the monitor |
+| Bottom cleats | 2 × 8″ | Support the bottom PVC panel |
+
+---
+
+### 🧰 Materials — Veranda PVC Build
+
+| Material | Size / Qty | Notes |
+|---|---|---|
+| Pressure treated 2×4 | 8 ft studs × 3–4 pcs | Internal frame and cleats |
+| ¼″ Veranda PVC sheet | 4 ft × 8 ft × 1 sheet | Main body panels (front / back / sides / bottom) |
+| Additional PVC sheet | Offcuts or second sheet | Roof panels and trim pieces |
+| ¾″ × 1½″ PVC trim | 8 ft × 2–4 pcs | Optional internal cleats / trim |
+| Plexiglass / acrylic | ~22″ × 14″ | Monitor window |
+| Screws | #8 × 1¼″ stainless or coated | PVC-to-wood fasteners |
+| Exterior sealant | — | Silicone or polyurethane caulk |
+| Exterior paint | — | Santa red / white theme |
+| Hinges | 2 pcs | For rear or side access door |
+| Latch / magnetic catch | 1 pc | Keeps the service door closed |
+| Cable glands | 2 or more | For power and sensor cabling |
+| Zip ties / anchors | — | Internal cable management |
+
+> 💡 **Electronics are listed separately** — see [Hardware You'll Need](#-hardware-youll-need) for the Raspberry Pi, display, sensors, and power supplies.
 
 ---
 
@@ -347,8 +418,6 @@ All settings are stored in `/home/fpp/media/config/sled.json`. You can edit this
   "donation_gpio_pin": 16,
   "cooldown_s": 5,
   "play_timeout_s": 60,
-  "schedule_start": "16:00",
-  "schedule_end": "22:00",
   "autostart": true,
   "mqtt_host": "",
   "mqtt_port": 1883,
@@ -381,8 +450,6 @@ All settings are stored in `/home/fpp/media/config/sled.json`. You can edit this
 | `donation_gpio_pin` | `16` | BCM GPIO pin for donation sensor |
 | `cooldown_s` | `5` | Seconds before sensor can trigger again |
 | `play_timeout_s` | `60` | Max seconds a triggered video plays before returning to idle |
-| `schedule_start` | `"16:00"` | Time daemon activates triggers (24h format) |
-| `schedule_end` | `"22:00"` | Time daemon deactivates triggers |
 | `autostart` | `true` | Start daemon automatically when FPP starts |
 | `mqtt_base_topic` | `"sled/mailbox"` | MQTT topic prefix for all publishes |
 | `radar_enabled` | `false` | Enable dual radar car detection |
@@ -597,24 +664,27 @@ You can embed `SLED - Trigger Letter` as an event in a FPP sequence. Imagine: at
 
 ---
 
-## 🕐️ Schedule / Active Hours
+## 🕐️ Schedule / Active Hours (FPP Scheduler)
 
-SLED respects your display hours. Set `schedule_start` and `schedule_end` in 24-hour format:
+SLED defers scheduling entirely to **FPP's native Scheduler** — no start/end times in the plugin config. This lets you manage all your show timings in one place alongside your other FPP schedules.
 
-```json
-"schedule_start": "16:00",
-"schedule_end": "22:00"
-```
+### Setting Up Your Schedule
 
-Outside of scheduled hours:
-- GPIO sensors are monitored but **triggers are ignored**
-- Radar detections are **ignored**
-- The **idle playlist** continues to loop (optional — can be disabled)
-- The daemon stays running and checks schedule every minute
+1. In FPP, go to **Content Setup → Scheduler**
+2. Create a **Daily** entry:
+   - **Action:** Start Playlist → `sled_idle` — set to **Repeat**
+   - **Time:** Your opening time (e.g., `16:00`)
+3. Create a second **Daily** entry:
+   - **Action:** Stop Playing
+   - **Time:** Your closing time (e.g., `22:00`)
 
-At `schedule_start`, the daemon automatically activates — no restart needed.
+### How the Daemon Responds
 
-> **Tip:** Set `schedule_end` to `"23:59"` if you want it active all evening without a hard cutoff.
+- **During show hours:** FPP's Scheduler starts `sled_idle` at opening time. The daemon monitors sensors and interrupts idle for letter/donation events, then automatically resumes idle afterward.
+- **Outside show hours:** FPP's Scheduler stops playback at closing time. If an event triggers after hours, the daemon plays the event video but does **not** restart idle — it respects whatever state the FPP Scheduler left things in.
+- **The daemon runs 24/7** via systemd regardless of schedule — it's always ready to respond instantly when show hours begin.
+
+> **Tip:** If you want the idle playlist to run all evening without a hard stop, just don't add a "Stop Playing" schedule entry — or add one at `23:59`.
 
 ---
 
@@ -713,7 +783,7 @@ sudo journalctl -u sled-mailbox --no-pager -n 50
 - Check that the file is readable: `ls -la /home/fpp/media/videos/`
 - Verify FPP's REST API is running: `curl http://localhost/api/fppd/status`
 - Check `SledMailbox.log` for FPP API error messages
-- Make sure you're within `schedule_start` / `schedule_end` hours
+- Make sure FPP's Scheduler has started the idle playlist for your show hours
 
 ---
 
