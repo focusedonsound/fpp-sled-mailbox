@@ -147,10 +147,6 @@ if [[ ! -f "$CONFIG" ]]; then
     "donation": [],
     "play_timeout_s": 120
   },
-  "schedule": {
-    "start": "16:00",
-    "end": "22:00"
-  },
   "pins": {
     "letter": 17,
     "donation": null

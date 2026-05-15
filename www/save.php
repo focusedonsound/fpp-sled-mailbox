@@ -54,10 +54,6 @@ $cfg["pins"]["donation"] = ($pinDonation !== "") ? (int)$pinDonation : null;
 $cfg["letter"]["cooldown_s"]   = pFloat("letter_cooldown",   3.0);
 $cfg["donation"]["cooldown_s"] = pFloat("donation_cooldown", 5.0);
 
-// ── Schedule ──────────────────────────────────────────────────────────────
-$cfg["schedule"]["start"] = pStr("schedule_start", "16:00");
-$cfg["schedule"]["end"]   = pStr("schedule_end",   "22:00");
-
 // ── LD2410 ────────────────────────────────────────────────────────────────
 $cfg["ld2410"]["enabled"]            = pBool("ld2410_enabled");
 $cfg["ld2410"]["A"]["port"]          = pStr("ld2410_port_a", "/dev/ttyUSB0");

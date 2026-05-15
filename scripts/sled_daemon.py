@@ -257,19 +257,6 @@ def load_cfg() -> Dict[str, Any]:
         return {}
 
 
-def in_window(cfg: Dict[str, Any], now: Optional[dt.datetime] = None) -> bool:
-    now = now or dt.datetime.now()
-    sched = cfg.get("schedule", {})
-    start_str = sched.get("start", "16:00")
-    end_str   = sched.get("end",   "22:00")
-    try:
-        s = dt.datetime.strptime(start_str, "%H:%M").time()
-        e = dt.datetime.strptime(end_str,   "%H:%M").time()
-    except ValueError:
-        log.warning("[Schedule] Invalid time format (%s – %s), defaulting off", start_str, end_str)
-        return False
-    return s <= now.time() < e
-
 
 # =============================================================================
 # DHT11 background thread (optional)
@@ -519,33 +506,12 @@ def main() -> None:
     last_donation_time: float = 0.0
     next_letter_idx:    int   = 0
     next_donation_idx:  int   = 0
-    last_sched_check:   float = 0.0
-    last_idle_start_ts: float = 0.0
-    sched_inside:       Optional[bool] = None
 
     parked_a = ParkedState("A", parked_timeout_s)
     parked_b = ParkedState("B", parked_timeout_s)
 
-    # ── Initial playback state ─────────────────────────────────────────────────
-    # Initialise sched_inside to the current window state so the first schedule
-    # tick doesn't redundantly "enter" the window and call start_playlist again.
-    sched_inside: Optional[bool] = in_window(cfg)
-    if sched_inside:
-        # Only start idle if FPP isn't already playing it (e.g. daemon restarted
-        # while fppd was mid-playlist — no need to stop/restart).
-        if fpp.current_playlist() != pl_idle:
-            fpp.start_playlist(pl_idle, repeat=True)
-            last_idle_start_ts = time.time()
-    else:
-        if fpp.current_playlist() != "":
-            fpp.stop()
-
-    sched_cfg = cfg.get("schedule", {})
-    log.info("SLED daemon running (PID=%d)  schedule=%s–%s  window_now=%s",
-             os.getpid(),
-             sched_cfg.get("start", "16:00"),
-             sched_cfg.get("end",   "22:00"),
-             sched_inside)
+    log.info("SLED daemon running (PID=%d)  idle_playlist=%s",
+             os.getpid(), pl_idle)
 
     try:
         while not _shutdown.is_set():
@@ -561,36 +527,6 @@ def main() -> None:
                 ha.set_outbound_today(0)
                 ha.set_letter_today(0)
                 ha.set_donation_today(0)
-
-            # ── Schedule tick (every ~5 s) ─────────────────────────────────────
-            if now_ts - last_sched_check >= 5.0:
-                last_sched_check = now_ts
-                now_inside = in_window(cfg)
-                if now_inside != sched_inside:
-                    # Window boundary crossed — start or stop idle
-                    sched_inside = now_inside
-                    if now_inside:
-                        fpp.start_playlist(pl_idle, repeat=True)
-                        last_idle_start_ts = time.time()
-                        log.info("[Schedule] Entered active window")
-                    else:
-                        fpp.stop()
-                        log.info("[Schedule] Left active window")
-                elif now_inside:
-                    # Inside the window — check whether idle is genuinely stopped.
-                    # Read full status so we can inspect status_name: if fppd timed
-                    # out or is mid-start (status="playing") don't restart.
-                    # Also skip the check within 10s of our last start_playlist(idle)
-                    # call to avoid false-positive watchdog fires during VLC startup.
-                    _cooldown_ok = (now_ts - last_idle_start_ts) > 10.0
-                    _raw = fpp._status()
-                    if _raw is not None and _cooldown_ok:
-                        _cur   = _raw.get("current_playlist", {}).get("playlist", "")
-                        _sname = _raw.get("status_name", "")
-                        if _cur != pl_idle and _sname not in ("playing", "stopping"):
-                            log.info("[Schedule] Idle stopped (status=%s) — resuming", _sname)
-                            fpp.start_playlist(pl_idle, repeat=True)
-                            last_idle_start_ts = time.time()
 
             # ── Parked-car timeout ticks ───────────────────────────────────────
             parked_a.tick(now_ts, db)
@@ -665,6 +601,7 @@ def main() -> None:
                     continue
                 last_letter_time = now_ts
 
+                idle_was_playing = (fpp.current_playlist() == pl_idle)
                 fpp.stop()
                 if use_video_letter:
                     media = ev_letters[next_letter_idx % len(ev_letters)]
@@ -690,11 +627,10 @@ def main() -> None:
                 ha.set_letter_today(letter_today_count)
                 db.log_event("letter", event_meta)
 
-                if in_window(cfg):
+                # Resume idle if it was playing before the event; otherwise
+                # leave FPP in whatever state the native scheduler left it.
+                if idle_was_playing:
                     fpp.start_playlist(pl_idle, repeat=True)
-                    last_idle_start_ts = time.time()
-                else:
-                    fpp.stop()
                 continue
 
             # ── DONATION ──────────────────────────────────────────────────────
@@ -704,6 +640,7 @@ def main() -> None:
                     continue
                 last_donation_time = now_ts
 
+                idle_was_playing = (fpp.current_playlist() == pl_idle)
                 fpp.stop()
                 if use_video_donation:
                     media = ev_donations[next_donation_idx % len(ev_donations)]
@@ -736,11 +673,10 @@ def main() -> None:
                 ha.set_donation_today(donation_today_count)
                 db.log_event("donation", don_meta)
 
-                if in_window(cfg):
+                # Resume idle if it was playing before the event; otherwise
+                # leave FPP in whatever state the native scheduler left it.
+                if idle_was_playing:
                     fpp.start_playlist(pl_idle, repeat=True)
-                    last_idle_start_ts = time.time()
-                else:
-                    fpp.stop()
                 continue
 
             # ── RADAR A ───────────────────────────────────────────────────────

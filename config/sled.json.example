@@ -3,10 +3,6 @@
   "paths": {
     "videos": "/home/fpp/media/plugins/fpp-sled-mailbox/videos"
   },
-  "schedule": {
-    "start": "16:00",
-    "end": "22:00"
-  },
   "video": {
     "idle": "idle.mp4",
     "letter_clips": ["letter1.mp4", "letter2.mp4"],

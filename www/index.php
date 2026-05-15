@@ -274,7 +274,7 @@ $serialPorts = listSerialPorts();
             <th colspan="2" style="padding:8px;">
               <i class="fas fa-fw fa-rotate"></i> Idle Screen
               <span class="text-muted fw-normal small ms-2">
-                FPP playlist that loops continuously during the active schedule window
+                FPP playlist that loops while your show is active
               </span>
             </th>
           </tr>
@@ -302,6 +302,19 @@ $serialPorts = listSerialPorts();
                        min="5" max="600" step="1"
                        value="<?php echo (int)($cfg['playlists']['play_timeout_s'] ?? 120); ?>" />
                 <span class="input-group-text">sec</span>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td colspan="2" style="padding:8px 12px;">
+              <div style="background:#1a1a2e; border:1px solid #2a4080; border-radius:.35rem; padding:.6rem .85rem;">
+                <strong style="color:#7eb3f7;"><i class="fas fa-fw fa-calendar-clock"></i> Schedule your show hours using FPP&rsquo;s native Scheduler</strong>
+                <div class="small mt-1" style="color:#a0b8d8;">
+                  Go to <strong style="color:#c8daf5;">Content Setup &rarr; Scheduler</strong> and create entries to
+                  <em style="color:#c8daf5;">Start Playlist</em> (<code style="background:#0d1829;padding:.1rem .3rem;border-radius:.2rem;"><?php echo htmlspecialchars($cfg['playlists']['idle'] ?? 'sled_idle'); ?></code>, Repeat) at your opening time
+                  and <em style="color:#c8daf5;">Stop Playing</em> at closing time.
+                  The SLED daemon will automatically resume the idle playlist after each letter or donation event.
+                </div>
               </div>
             </td>
           </tr>
@@ -458,40 +471,6 @@ $serialPorts = listSerialPorts();
                        value="<?php echo number_format((float)($cfg['donation']['cooldown_s'] ?? 5.0), 1); ?>" />
                 <span class="input-group-text">sec</span>
               </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- ── Schedule ────────────────────────────────────────────────────── -->
-  <div class="fppTableWrapper fppTableWrapperAsTable mb-3">
-    <div class="fppTableContents fppFThScrollContainer">
-      <table class="fppSelectableRowTable sled-table-4col" style="width:100%;">
-        <thead>
-          <tr>
-            <th colspan="4" style="padding:8px;">
-              <i class="fas fa-fw fa-clock"></i> Idle Schedule
-              <span class="text-muted fw-normal small ms-2">Idle playlist active window &mdash; events trigger outside this window too; idle playlist is stopped when outside the window</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td style="width:200px; padding:8px;">
-              <label class="mb-0">Start Time</label>
-            </td>
-            <td style="width:180px; padding:8px;">
-              <input type="time" class="form-control form-control-sm" name="schedule_start"
-                     value="<?php echo htmlspecialchars($cfg['schedule']['start']); ?>" />
-            </td>
-            <td style="width:200px; padding:8px;">
-              <label class="mb-0">End Time</label>
-            </td>
-            <td style="padding:8px;">
-              <input type="time" class="form-control form-control-sm" name="schedule_end"
-                     value="<?php echo htmlspecialchars($cfg['schedule']['end']); ?>" />
             </td>
           </tr>
         </tbody>
@@ -885,37 +864,39 @@ $serialPorts = listSerialPorts();
   </div>
 </div>
 
-<!-- ── FPP GPIO Wiring Guide ───────────────────────────────────────── -->
+<!-- ── GPIO Info ──────────────────────────────────────────────────── -->
 <div class="fppTableWrapper fppTableWrapperAsTable mb-3">
   <div class="fppTableContents">
     <table class="fppSelectableRowTable" style="width:100%;">
       <thead>
         <tr>
-          <th colspan="3" style="padding:8px;">
-            <i class="fas fa-fw fa-circle-info"></i> How to Wire GPIO Sensors in FPP
+          <th style="padding:8px;">
+            <i class="fas fa-fw fa-microchip"></i> About GPIO &amp; Sensor Wiring
           </th>
         </tr>
       </thead>
       <tbody>
         <tr>
-          <td style="padding:8px; width:30px; text-align:center;"><strong>1</strong></td>
-          <td style="padding:8px;">Go to <strong>GPIO</strong> in the FPP menu</td>
-          <td class="sled-hint-col" style="padding:8px; color:var(--bs-secondary);">Content Setup &rarr; GPIO</td>
-        </tr>
-        <tr>
-          <td style="padding:8px; text-align:center;"><strong>2</strong></td>
-          <td style="padding:8px;">Add a new Input using the <strong>Letter Pin</strong> number above</td>
-          <td class="sled-hint-col" style="padding:8px; color:var(--bs-secondary);">Pull-up, active LOW (beam break)</td>
-        </tr>
-        <tr>
-          <td style="padding:8px; text-align:center;"><strong>3</strong></td>
-          <td style="padding:8px;">Set the action to <strong>FPP Command</strong> &rarr; <em>SLED &ndash; Trigger Letter</em></td>
-          <td class="sled-hint-col" style="padding:8px; color:var(--bs-secondary);">Trigger on: Falling edge</td>
-        </tr>
-        <tr>
-          <td style="padding:8px; text-align:center;"><strong>4</strong></td>
-          <td style="padding:8px;">Repeat for the Donation Pin using <em>SLED &ndash; Trigger Donation</em></td>
-          <td class="sled-hint-col" style="padding:8px; color:var(--bs-secondary);">Optional</td>
+          <td style="padding:10px 14px;">
+            <p class="mb-2">
+              <strong>The SLED daemon monitors the GPIO pins directly</strong> &mdash; you do
+              <em>not</em> need to configure anything in FPP&rsquo;s GPIO Inputs.
+              When you save settings, SLED automatically adds <strong>disabled</strong> placeholder
+              entries to FPP&rsquo;s GPIO Inputs list so FPP knows those pins are reserved
+              and won&rsquo;t try to claim them.
+            </p>
+            <p class="mb-2">
+              <strong>Wiring:</strong> Connect each beam-break sensor between the GPIO pin and
+              <strong>Ground (GND)</strong>.  The daemon configures each pin as input with
+              internal pull-up, so the pin reads HIGH at rest and LOW when the beam is broken
+              (active-low).
+            </p>
+            <p class="mb-0 text-muted small">
+              <i class="fas fa-fw fa-triangle-exclamation"></i>
+              Do <strong>not</strong> add the letter or donation pins to FPP&rsquo;s GPIO Inputs
+              manually &mdash; doing so would cause a conflict with the daemon.
+            </p>
+          </td>
         </tr>
       </tbody>
     </table>
