@@ -236,17 +236,36 @@ class Ld2410UsbReader(threading.Thread):
         return ok
 
     def _apply_config_write(self, ser, cfg: Ld2410Config) -> bool:
-        """Write config to device flash. Returns True on success."""
-        try: ser.reset_input_buffer()
-        except Exception: pass
+        """Write config to device flash, then re-enable engineering streaming.
+        Always called from within diagnostic mode — restores eng mode on exit
+        so the live chart and snapshot continue after the write.
+        Returns True if the config write succeeded."""
+        try:
+            ser.reset_input_buffer()
+        except Exception:
+            pass
         time.sleep(0.05)
+
         ok = ld2410_enter_config(ser)
         if not ok:
+            print(f"[LD2410-{self.sensor_name}] config write: enter_config failed — "
+                  "re-enabling eng mode", flush=True)
+            # Best-effort: re-enable engineering mode so streaming is not lost
+            if ld2410_enter_config(ser):
+                ld2410_enable_eng(ser)
+                ld2410_exit_config(ser)
             return False
-        ok = ld2410_write_config(ser, cfg)
+
+        write_ok = ld2410_write_config(ser, cfg)
+
+        # Re-enable engineering mode BEFORE exiting config so the radar returns
+        # to engineering streaming instead of basic mode after ld2410_exit_config.
+        ld2410_enable_eng(ser)
         ld2410_exit_config(ser)
-        print(f"[LD2410-{self.sensor_name}] config write {'OK' if ok else 'FAILED'}", flush=True)
-        return ok
+
+        print(f"[LD2410-{self.sensor_name}] config write {'OK' if write_ok else 'FAILED'}",
+              flush=True)
+        return write_ok
 
     def _read_device_config(self, ser) -> Optional[Ld2410Config]:
         try: ser.reset_input_buffer()
@@ -351,9 +370,22 @@ class Ld2410UsbReader(threading.Thread):
                         buf.clear()
 
                 if pending_cfg is not None:
-                    self._apply_config_write(ser, pending_cfg)
-                    device_cfg   = pending_cfg
+                    write_ok = self._apply_config_write(ser, pending_cfg)
+                    if write_ok:
+                        # Write confirmed — update in-memory config so snapshot
+                        # immediately reflects the new values
+                        device_cfg = pending_cfg
+                    else:
+                        # Write failed — re-read hardware so snapshot stays accurate
+                        fresh = self._read_device_config(ser)
+                        if fresh:
+                            device_cfg = fresh
+                        # Re-enable engineering mode after the failed re-read
+                        if ld2410_enter_config(ser):
+                            ld2410_enable_eng(ser)
+                            ld2410_exit_config(ser)
                     diag_cfg_loaded = True
+                    buf.clear()  # discard frames that arrived during config write
 
                 # ── Load device config once when entering diag mode ────────
                 if self._diag_mode and not diag_cfg_loaded:

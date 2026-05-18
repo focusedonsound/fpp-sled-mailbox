@@ -800,20 +800,46 @@
     }
   };
 
-  /** Write current form values to the radar via the daemon cmd queue. */
+  /** Write current form values to the radar and verify the hardware accepted them. */
   window.sledRadarSave = async function () {
     const cfg = srReadForm();
     const action = 'diag_set_' + srSide.toLowerCase();
-    srSetSaveStatus('Saving…', false);
+    srSetSaveStatus('Writing to radar hardware…', false);
     try {
+      // Step 1 — send config to daemon
       const url = srTriggerUrl(action, 'data=' + encodeURIComponent(JSON.stringify(cfg)));
       const res = await fetch(url, { cache: 'no-store' });
       const j   = await res.json().catch(() => ({ status: 'ERROR', message: 'Bad response' }));
-      if (j.status === 'OK') {
-        srSavedCfg = cfg;
-        srSetSaveStatus('✓ ' + (j.message || 'Saved to Radar ' + srSide), false);
+      if (j.status !== 'OK') {
+        srSetSaveStatus('✗ ' + (j.message || 'Send failed'), true);
+        return;
+      }
+
+      // Step 2 — wait for daemon to apply config and write snapshot (~1.5 s)
+      srSetSaveStatus('⏳ Verifying…', false);
+      await new Promise(r => setTimeout(r, 2000));
+
+      // Step 3 — re-read snapshot and compare thresholds to confirm hardware write
+      const vRes  = await fetch(srLiveUrl(srSide), { cache: 'no-store' });
+      const vData = await vRes.json().catch(() => null);
+
+      if (vData && vData.active && vData.thresholds && Array.isArray(vData.thresholds.moving)) {
+        const moveMatch   = cfg.move_sensitivity.every(
+          (v, i) => v === (vData.thresholds.moving[i] ?? -1));
+        const staticMatch = cfg.static_sensitivity.every(
+          (v, i) => v === ((vData.thresholds.stationary || [])[i] ?? -1));
+
+        if (moveMatch && staticMatch) {
+          srSavedCfg = Object.assign({ max_static_gate: cfg.max_move_gate }, cfg);
+          srSetSaveStatus('✓ Saved and verified on Radar ' + srSide, false);
+        } else {
+          srSetSaveStatus(
+            '⚠ Sent but values not confirmed on hardware — check log for errors', true);
+        }
       } else {
-        srSetSaveStatus('✗ ' + (j.message || 'Save failed'), true);
+        // Snapshot not active (radar may have restarted) — trust the send but warn
+        srSavedCfg = Object.assign({ max_static_gate: cfg.max_move_gate }, cfg);
+        srSetSaveStatus('✓ Sent to Radar ' + srSide + ' (snapshot unavailable for verification)', false);
       }
     } catch (e) {
       srSetSaveStatus('✗ Network error: ' + e.message, true);
