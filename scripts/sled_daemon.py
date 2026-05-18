@@ -423,6 +423,15 @@ def main() -> None:
     letter_cd_s   = float(cfg.get("letter",   {}).get("cooldown_s", 3.0))
     donation_cd_s = float(cfg.get("donation", {}).get("cooldown_s", 5.0))
 
+    # ── Special message slot config ────────────────────────────────────────────
+    specials_cfg   = cfg.get("specials", {})
+    special1_cfg   = specials_cfg.get("special_1", {})
+    special2_cfg   = specials_cfg.get("special_2", {})
+    special1_label = special1_cfg.get("label",     "Special Message 1")
+    special2_label = special2_cfg.get("label",     "Special Message 2")
+    special1_cd_s  = float(special1_cfg.get("cooldown_s", 5.0))
+    special2_cd_s  = float(special2_cfg.get("cooldown_s", 5.0))
+
     # ── Playback config ────────────────────────────────────────────────────────
     pl_cfg    = cfg.get("playlists", {})
     pl_idle   = pl_cfg.get("idle", "sled_idle")
@@ -451,12 +460,22 @@ def main() -> None:
     if not pl_donations:
         pl_donations = pl_letters[:1]
 
+    # Special message playlists (no video-file mode — always playlist-based)
+    pl_specials1 = pl_cfg.get("special_1", [])
+    pl_specials2 = pl_cfg.get("special_2", [])
+    if isinstance(pl_specials1, str): pl_specials1 = [pl_specials1]
+    if isinstance(pl_specials2, str): pl_specials2 = [pl_specials2]
+    pl_specials1 = [p for p in pl_specials1 if p]
+    pl_specials2 = [p for p in pl_specials2 if p]
+
     # What actually runs for letter/donation events
     use_video_letter   = bool(ev_letters)
     use_video_donation = bool(ev_donations)
     log.info("Letter mode: %s  Donation mode: %s",
              f"video({ev_letters})"   if use_video_letter   else f"playlist({pl_letters})",
              f"video({ev_donations})" if use_video_donation else f"playlist({pl_donations})")
+    log.info("Special1 (%s) playlists: %s", special1_label, pl_specials1 or "(none — disabled)")
+    log.info("Special2 (%s) playlists: %s", special2_label, pl_specials2 or "(none — disabled)")
 
     # ── Subsystems ─────────────────────────────────────────────────────────────
     fpp = FPPPlayer()
@@ -482,6 +501,13 @@ def main() -> None:
     ha.set_letter_today(letter_today_count)
     ha.set_donation_today(donation_today_count)
 
+    special1_today_count: int = db.get_today_count("special_1")
+    special2_today_count: int = db.get_today_count("special_2")
+    ha.set_special_total(1, snap.get("special1_total", 0))
+    ha.set_special_total(2, snap.get("special2_total", 0))
+    ha.set_special_today(1, special1_today_count)
+    ha.set_special_today(2, special2_today_count)
+
     # ── Sensors ────────────────────────────────────────────────────────────────
     debug_cfg = cfg.get("debug", {})
     use_mock  = bool(debug_cfg.get("use_mock_inputs", False))
@@ -494,18 +520,38 @@ def main() -> None:
         donation_raw = pins_cfg.get("donation")
         # Guard against None, empty string, or "null" saved from the UI
         donation_pin = int(donation_raw) if donation_raw not in (None, "", "null") else None
-        ins = GPIOInputs(letter_pin, donation_pin, cfg)
-        log.info("Using GPIO inputs (letter=GPIO%d, donation=%s)",
-                 letter_pin, f"GPIO{donation_pin}" if donation_pin else "none")
+
+        # Special message slots — both default disabled (null pin)
+        s1_raw = pins_cfg.get("special_1")
+        s2_raw = pins_cfg.get("special_2")
+        special1_pin = int(s1_raw) if s1_raw not in (None, "", "null") else None
+        special2_pin = int(s2_raw) if s2_raw not in (None, "", "null") else None
+
+        sp_pins: List[tuple] = []
+        if special1_pin is not None:
+            sp_pins.append((special1_pin, "s1", special1_label))
+        if special2_pin is not None:
+            sp_pins.append((special2_pin, "s2", special2_label))
+
+        ins = GPIOInputs(letter_pin, donation_pin, cfg, special_pins=sp_pins or None)
+        log.info("Using GPIO inputs (letter=GPIO%d, donation=%s, special1=%s, special2=%s)",
+                 letter_pin,
+                 f"GPIO{donation_pin}"  if donation_pin  else "none",
+                 f"GPIO{special1_pin}"  if special1_pin  else "none",
+                 f"GPIO{special2_pin}"  if special2_pin  else "none")
 
     # ── FSM / timing state ─────────────────────────────────────────────────────
     tA: Optional[float] = None
     tB: Optional[float] = None
-    last_car_time:      float = 0.0
-    last_letter_time:   float = 0.0
-    last_donation_time: float = 0.0
-    next_letter_idx:    int   = 0
-    next_donation_idx:  int   = 0
+    last_car_time:       float = 0.0
+    last_letter_time:    float = 0.0
+    last_donation_time:  float = 0.0
+    last_special1_time:  float = 0.0
+    last_special2_time:  float = 0.0
+    next_letter_idx:     int   = 0
+    next_donation_idx:   int   = 0
+    next_special1_idx:   int   = 0
+    next_special2_idx:   int   = 0
 
     parked_a = ParkedState("A", parked_timeout_s)
     parked_b = ParkedState("B", parked_timeout_s)
@@ -520,13 +566,17 @@ def main() -> None:
             # ── Midnight reset ─────────────────────────────────────────────────
             if db.check_midnight_reset():
                 log.info("Midnight reset: today counters cleared")
-                letter_today_count   = 0
-                donation_today_count = 0
+                letter_today_count    = 0
+                donation_today_count  = 0
+                special1_today_count  = 0
+                special2_today_count  = 0
                 ha.set_car_today(0)
                 ha.set_inbound_today(0)
                 ha.set_outbound_today(0)
                 ha.set_letter_today(0)
                 ha.set_donation_today(0)
+                ha.set_special_today(1, 0)
+                ha.set_special_today(2, 0)
 
             # ── Parked-car timeout ticks ───────────────────────────────────────
             parked_a.tick(now_ts, db)
@@ -542,6 +592,12 @@ def main() -> None:
 
                 elif queued_lower == "donation":
                     ins._q.put_nowait("d") if hasattr(ins, "_q") else None  # type: ignore
+
+                elif queued_lower == "special_1":
+                    ins._q.put_nowait("s1") if hasattr(ins, "_q") else None  # type: ignore
+
+                elif queued_lower == "special_2":
+                    ins._q.put_nowait("s2") if hasattr(ins, "_q") else None  # type: ignore
 
                 elif queued_lower == "stop":
                     log.info("[CmdQueue] STOP — shutting down")
@@ -675,6 +731,72 @@ def main() -> None:
 
                 # Resume idle if it was playing before the event; otherwise
                 # leave FPP in whatever state the native scheduler left it.
+                if idle_was_playing:
+                    fpp.start_playlist(pl_idle, repeat=True)
+                continue
+
+            # ── SPECIAL 1 ────────────────────────────────────────────────────
+            if ev == "s1":
+                if not pl_specials1:
+                    log.debug("[%s] No playlists configured — ignoring event", special1_label)
+                    continue
+                if now_ts - last_special1_time < special1_cd_s:
+                    log.debug("[%s] Ignored duplicate (cooldown)", special1_label)
+                    continue
+                last_special1_time = now_ts
+
+                idle_was_playing = (fpp.current_playlist() == pl_idle)
+                fpp.stop()
+                pl = pl_specials1[next_special1_idx % len(pl_specials1)]
+                next_special1_idx += 1
+                log.info("[%s] Playing playlist: %s", special1_label, pl)
+                fpp.play_once(pl, timeout_s=pl_timeout)
+
+                now_iso = dt.datetime.now(dt.timezone.utc).astimezone().isoformat()
+                sp1_meta: dict = {"playlist": pl, "label": special1_label}
+                ha.pulse_special(1)
+                ha.set_last_special(1, now_iso)
+                ha.event("special_1", {**sp1_meta, "ts": now_iso})
+
+                sp1t = db.increment_counter("special1_total")
+                special1_today_count += 1
+                ha.set_special_total(1, sp1t)
+                ha.set_special_today(1, special1_today_count)
+                db.log_event("special_1", sp1_meta)
+
+                if idle_was_playing:
+                    fpp.start_playlist(pl_idle, repeat=True)
+                continue
+
+            # ── SPECIAL 2 ────────────────────────────────────────────────────
+            if ev == "s2":
+                if not pl_specials2:
+                    log.debug("[%s] No playlists configured — ignoring event", special2_label)
+                    continue
+                if now_ts - last_special2_time < special2_cd_s:
+                    log.debug("[%s] Ignored duplicate (cooldown)", special2_label)
+                    continue
+                last_special2_time = now_ts
+
+                idle_was_playing = (fpp.current_playlist() == pl_idle)
+                fpp.stop()
+                pl = pl_specials2[next_special2_idx % len(pl_specials2)]
+                next_special2_idx += 1
+                log.info("[%s] Playing playlist: %s", special2_label, pl)
+                fpp.play_once(pl, timeout_s=pl_timeout)
+
+                now_iso = dt.datetime.now(dt.timezone.utc).astimezone().isoformat()
+                sp2_meta: dict = {"playlist": pl, "label": special2_label}
+                ha.pulse_special(2)
+                ha.set_last_special(2, now_iso)
+                ha.event("special_2", {**sp2_meta, "ts": now_iso})
+
+                sp2t = db.increment_counter("special2_total")
+                special2_today_count += 1
+                ha.set_special_total(2, sp2t)
+                ha.set_special_today(2, special2_today_count)
+                db.log_event("special_2", sp2_meta)
+
                 if idle_was_playing:
                     fpp.start_playlist(pl_idle, repeat=True)
                 continue

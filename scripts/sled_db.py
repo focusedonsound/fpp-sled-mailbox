@@ -35,19 +35,25 @@ CREATE TABLE IF NOT EXISTS counters (
 """
 
 # Counter keys
-KEY_CAR_TOTAL       = "car_total"
-KEY_CAR_TODAY       = "car_today"
-KEY_INBOUND_TODAY   = "inbound_today"
-KEY_OUTBOUND_TODAY  = "outbound_today"
-KEY_LETTER_TOTAL    = "letter_total"
-KEY_DONATION_TOTAL  = "donation_total"
-KEY_TODAY_DATE      = "today_date"   # stored as "YYYY-MM-DD"
+KEY_CAR_TOTAL        = "car_total"
+KEY_CAR_TODAY        = "car_today"
+KEY_INBOUND_TODAY    = "inbound_today"
+KEY_OUTBOUND_TODAY   = "outbound_today"
+KEY_LETTER_TOTAL     = "letter_total"
+KEY_DONATION_TOTAL   = "donation_total"
+KEY_SPECIAL1_TOTAL   = "special1_total"
+KEY_SPECIAL1_TODAY   = "special1_today"
+KEY_SPECIAL2_TOTAL   = "special2_total"
+KEY_SPECIAL2_TODAY   = "special2_today"
+KEY_TODAY_DATE       = "today_date"   # stored as "YYYY-MM-DD"
 
 # Event kind constants
-KIND_LETTER   = "letter"
-KIND_DONATION = "donation"
-KIND_CAR      = "car"
-KIND_PARKED   = "parked"    # car has been stationary > parked_timeout_s
+KIND_LETTER    = "letter"
+KIND_DONATION  = "donation"
+KIND_CAR       = "car"
+KIND_PARKED    = "parked"    # car has been stationary > parked_timeout_s
+KIND_SPECIAL1  = "special_1"
+KIND_SPECIAL2  = "special_2"
 
 
 def _now_iso() -> str:
@@ -125,7 +131,8 @@ class SledDB:
             return False
 
         # Reset today counters
-        for key in (KEY_CAR_TODAY, KEY_INBOUND_TODAY, KEY_OUTBOUND_TODAY):
+        for key in (KEY_CAR_TODAY, KEY_INBOUND_TODAY, KEY_OUTBOUND_TODAY,
+                    KEY_SPECIAL1_TODAY, KEY_SPECIAL2_TODAY):
             self.set_counter(key, 0)
         self.set_counter(KEY_TODAY_DATE, today)  # type: ignore[arg-type]
         return True
@@ -139,6 +146,8 @@ class SledDB:
         keys = [
             KEY_CAR_TOTAL, KEY_CAR_TODAY, KEY_INBOUND_TODAY, KEY_OUTBOUND_TODAY,
             KEY_LETTER_TOTAL, KEY_DONATION_TOTAL,
+            KEY_SPECIAL1_TOTAL, KEY_SPECIAL1_TODAY,
+            KEY_SPECIAL2_TOTAL, KEY_SPECIAL2_TODAY,
         ]
         return {k: self.get_counter(k, 0) for k in keys}
 

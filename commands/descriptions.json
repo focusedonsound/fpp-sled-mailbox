@@ -12,6 +12,18 @@
     "args": []
   },
   {
+    "name": "SLED - Trigger Special Message 1",
+    "description": "Simulate Special Message 1 being triggered and play the configured playlist.",
+    "script": "sled_cmd_special1.sh",
+    "args": []
+  },
+  {
+    "name": "SLED - Trigger Special Message 2",
+    "description": "Simulate Special Message 2 being triggered and play the configured playlist.",
+    "script": "sled_cmd_special2.sh",
+    "args": []
+  },
+  {
     "name": "SLED - Stop Daemon",
     "description": "Stop the SLED Santa Mailbox daemon.",
     "script": "sled_cmd_stop.sh",

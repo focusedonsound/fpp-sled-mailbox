@@ -4,6 +4,8 @@ sensors.py — Input layer for SLED Santa Mailbox (FPP plugin edition).
 Events emitted via get_event(timeout):
   "l"     = letter slot triggered
   "d"     = donation slot triggered
+  "s1"    = special message 1 triggered (optional GPIO, user-configurable)
+  "s2"    = special message 2 triggered (optional GPIO, user-configurable)
   "a"     = radar A presence rising edge  (car arrived / presence started)
   "a_off" = radar A presence falling edge (car left  / presence ended)
   "b"     = radar B presence rising edge
@@ -85,23 +87,37 @@ except ImportError:
 class MockInputs:
     """
     Stdin-based mock for testing without hardware.
-    Keys: l=letter  d=donation  a=radarA  b=radarB  q=quit
+    Keys: l=letter  d=donation  1=special1  2=special2  a=radarA  b=radarB  q=quit
     """
+
+    # Map single keypress → event code
+    _KEY_MAP = {
+        "l": "l",
+        "d": "d",
+        "1": "s1",
+        "2": "s2",
+        "a": "a",
+        "b": "b",
+        "q": "q",
+    }
+
     def __init__(self) -> None:
         self._q: "queue.Queue[str]" = queue.Queue()
         threading.Thread(target=self._reader, daemon=True, name="MockInputs").start()
 
     def _reader(self) -> None:
-        print("[MockInputs] l=letter  d=donation  a=A  b=B  q=quit", flush=True)
+        print("[MockInputs] l=letter  d=donation  1=special1  2=special2  "
+              "a=A  b=B  q=quit", flush=True)
         while True:
             ch = sys.stdin.read(1)
             if not ch:
                 time.sleep(0.05)
                 continue
             ch = ch.strip().lower()
-            if ch in ("l", "d", "a", "b", "q"):
+            code = self._KEY_MAP.get(ch)
+            if code is not None:
                 try:
-                    self._q.put_nowait(ch)
+                    self._q.put_nowait(code)
                 except queue.Full:
                     pass
 
@@ -415,27 +431,45 @@ class Ld2410UsbReader(threading.Thread):
 class GPIOInputs:
     """
     Combined input handler:
-      - Letter slot   (GPIO pull-up, active-low beam break)
-      - Donation slot (GPIO, optional)
+      - Letter slot     (GPIO pull-up, active-low beam break)
+      - Donation slot   (GPIO, optional)
+      - Special slots 1 and 2 (GPIO, optional — user-configurable labels)
       - Car radars A and B (LD2410B USB, optional)
 
-    Emits: "l", "d", "a", "a_off", "b", "b_off"
+    Emits: "l", "d", "s1", "s2", "a", "a_off", "b", "b_off"
+
+    special_pins — list of (bcm_pin, event_code, label) tuples for any extra
+    GPIO inputs beyond letter/donation.  Pass None or [] to disable.
     """
 
-    def __init__(self, letter_pin: int, donation_pin: Optional[int], cfg: Dict[str, Any]) -> None:
+    def __init__(
+        self,
+        letter_pin: int,
+        donation_pin: Optional[int],
+        cfg: Dict[str, Any],
+        special_pins: Optional[list] = None,
+    ) -> None:
         self._q: "queue.Queue[str]" = queue.Queue()
         self._threads: list = []
         self._readers: Dict[str, Ld2410UsbReader] = {}
 
+        # Build the full ordered list of GPIO pins to initialise.
+        # Each entry is (bcm_pin, event_code, human_label).
+        pins_to_init: list = [(letter_pin, "l", "Letter")]
+        if donation_pin is not None:
+            pins_to_init.append((donation_pin, "d", "Donation"))
+        if special_pins:
+            pins_to_init.extend(special_pins)
+
         # ── GPIO sensors ──────────────────────────────────────────────────
         # Try gpiozero+RPiGPIOFactory first (original implementation).
         # Fall back to raw RPi.GPIO if gpiozero is not installed.
-        self._gpio_pins: list  = []   # BCM pins registered via RPi.GPIO (for cleanup)
+        self._gpio_pins: list  = []    # BCM pins registered via RPi.GPIO (for cleanup)
         self._gpiozero_btns: list = [] # gpiozero Button objects (keep alive — GC closes them)
         if _GPIOZERO_AVAILABLE:
-            self._setup_gpiozero(letter_pin, donation_pin)
+            self._setup_gpiozero(pins_to_init)
         elif _RPIGPIO_AVAILABLE:
-            self._setup_rpigpio(letter_pin, donation_pin)
+            self._setup_rpigpio(pins_to_init)
         else:
             print("[GPIOInputs] Neither gpiozero nor RPi.GPIO available — "
                   "GPIO sensors disabled.", flush=True)
@@ -469,8 +503,11 @@ class GPIOInputs:
 
     # ── GPIO setup helpers ─────────────────────────────────────────────────
 
-    def _setup_rpigpio(self, letter_pin: int, donation_pin: Optional[int]) -> None:
+    def _setup_rpigpio(self, pins_to_init: list) -> None:
         """Configure GPIO edge detection using RPi.GPIO (no pigpiod needed).
+
+        pins_to_init — list of (bcm_pin, event_code, label) tuples, already
+        built by __init__ to include letter, donation, and any special slots.
 
         Initialization pattern:
           1. Cleanup pin first — removes any dirty state left by a prior run
@@ -482,10 +519,6 @@ class GPIOInputs:
           4. Read pin once to drain any latched edge in the kernel driver.
           5. Add edge detection.
         """
-        pins_to_init = [(letter_pin, "l", "Letter")]
-        if donation_pin is not None:
-            pins_to_init.append((donation_pin, "d", "Donation"))
-
         try:
             _RPIGPIO.setmode(_RPIGPIO.BCM)
             _RPIGPIO.setwarnings(False)
@@ -535,8 +568,11 @@ class GPIOInputs:
                     pass
             self._gpio_pins = []
 
-    def _setup_gpiozero(self, letter_pin: int, donation_pin: Optional[int]) -> None:
+    def _setup_gpiozero(self, pins_to_init: list) -> None:
         """Configure GPIO using gpiozero + RPiGPIOFactory (original implementation).
+
+        pins_to_init — list of (bcm_pin, event_code, label) tuples, already
+        built by __init__ to include letter, donation, and any special slots.
 
         Forces gpiozero to use RPi.GPIO as its pin backend instead of pigpio,
         so no pigpiod daemon is required and FPP's GPIO ownership is not fought.
@@ -544,10 +580,6 @@ class GPIOInputs:
         """
         try:
             factory = _RPiGPIOFactory()
-
-            pins_to_init = [(letter_pin, "l", "Letter")]
-            if donation_pin is not None:
-                pins_to_init.append((donation_pin, "d", "Donation"))
 
             # Wait for NPN beam-break sensors to stabilize after power-up
             print("[GPIOInputs] Waiting 500 ms for beam sensors to stabilize...", flush=True)
@@ -567,7 +599,7 @@ class GPIOInputs:
             self._gpiozero_btns = []
             # Attempt raw RPi.GPIO fallback
             if _RPIGPIO_AVAILABLE:
-                self._setup_rpigpio(letter_pin, donation_pin)
+                self._setup_rpigpio(pins_to_init)
             else:
                 print("[GPIOInputs] RPi.GPIO also unavailable — GPIO sensors disabled.", flush=True)
 

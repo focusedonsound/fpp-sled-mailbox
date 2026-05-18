@@ -191,7 +191,7 @@ class HAMqtt:
 
     def _all_discovery_entities(self) -> List[Tuple[str, str]]:
         """Return (component, obj_id) for every registered HA entity."""
-        return [
+        entities: List[Tuple[str, str]] = [
             ("binary_sensor", "letter"),
             ("binary_sensor", "donation"),
             ("sensor", "last_letter"),
@@ -209,6 +209,15 @@ class HAMqtt:
             ("sensor", "temp_c"),
             ("sensor", "humidity"),
         ]
+        # Special message slots (1 and 2)
+        for slot in (1, 2):
+            entities += [
+                ("binary_sensor", f"special_{slot}"),
+                ("sensor",        f"last_special_{slot}"),
+                ("sensor",        f"special_{slot}_total"),
+                ("sensor",        f"special_{slot}_today"),
+            ]
+        return entities
 
     def _send_discovery(self) -> None:
         if not self.cfg.get("mqtt", {}).get("discovery", True):
@@ -258,6 +267,40 @@ class HAMqtt:
             self._publish_config(
                 "sensor", obj_id, name, f"{b}/status/{obj_id}",
                 {"unit_of_measurement": unit, "state_class": state_class, "icon": icon},
+            )
+
+        # ── Special message slots (1 and 2) ──────────────────────────────
+        specials_cfg = self.cfg.get("specials", {})
+        for slot in (1, 2):
+            key   = f"special_{slot}"
+            scfg  = specials_cfg.get(key, {})
+            label = scfg.get("label", f"Special Message {slot}")
+
+            # Pulse binary sensor
+            self._publish_config(
+                "binary_sensor", key, f"{label} Triggered",
+                f"{b}/status/{key}",
+                {"device_class": "occupancy",
+                 "payload_on": "ON", "payload_off": "OFF",
+                 "icon": "mdi:star"},
+            )
+            # Last-triggered timestamp
+            self._publish_config(
+                "sensor", f"last_{key}", f"Last {label}",
+                f"{b}/status/last_{key}",
+                {"device_class": "timestamp", "icon": "mdi:star-clock"},
+            )
+            # Lifetime total counter
+            self._publish_config(
+                "sensor", f"{key}_total", f"{label} (Total)",
+                f"{b}/status/{key}_total",
+                {"state_class": "total_increasing", "icon": "mdi:star-outline"},
+            )
+            # Today counter
+            self._publish_config(
+                "sensor", f"{key}_today", f"{label} Today",
+                f"{b}/status/{key}_today",
+                {"state_class": "measurement", "icon": "mdi:star"},
             )
 
         # ── Environment sensors (DHT11, optional) ─────────────────────────
@@ -339,6 +382,21 @@ class HAMqtt:
 
     def set_donation_today(self, n: int) -> None:
         self.pub(f"{self.base}/status/donation_today", str(n))
+
+    # ── Special message slots ─────────────────────────────────────────
+    def pulse_special(self, slot: int) -> None:
+        """Pulse the special-slot binary sensor ON then OFF (slot = 1 or 2)."""
+        t = f"{self.base}/status/special_{slot}"
+        self.pub(t, "ON"); time.sleep(0.2); self.pub(t, "OFF")
+
+    def set_last_special(self, slot: int, iso: str) -> None:
+        self.pub(f"{self.base}/status/last_special_{slot}", iso, retain=True)
+
+    def set_special_total(self, slot: int, n: int) -> None:
+        self.pub(f"{self.base}/status/special_{slot}_total", str(n), retain=True)
+
+    def set_special_today(self, slot: int, n: int) -> None:
+        self.pub(f"{self.base}/status/special_{slot}_today", str(n))
 
     # ── Car counter ───────────────────────────────────────────────────
     def set_last_car_time(self, iso: str) -> None:

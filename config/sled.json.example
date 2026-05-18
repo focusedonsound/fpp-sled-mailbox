@@ -11,7 +11,27 @@
   },
   "pins": {
     "letter": 17,
-    "donation": null
+    "donation": null,
+    "special_1": null,
+    "special_2": null
+  },
+  "playlists": {
+    "idle": "sled_idle",
+    "letter": ["sled_letter"],
+    "donation": [],
+    "special_1": [],
+    "special_2": [],
+    "play_timeout_s": 120
+  },
+  "specials": {
+    "special_1": {
+      "label": "Special Message 1",
+      "cooldown_s": 5.0
+    },
+    "special_2": {
+      "label": "Special Message 2",
+      "cooldown_s": 5.0
+    }
   },
   "car": {
     "sequence_window_s": 0.8,
