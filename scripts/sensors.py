@@ -242,17 +242,27 @@ class Ld2410UsbReader(threading.Thread):
 
         cfg: Optional[Ld2410Config] = None
         if target:
-            # Read config BEFORE enabling engineering mode.
-            # On some LD2410B firmware variants, sending 0x0062 (enable eng)
-            # before 0x0061 (read config) causes the read response to return
-            # stale or garbage register values.  Reading first (while the device
-            # is purely in config mode with no eng state change in-flight)
-            # consistently returns the correct flash values.
-            cfg = ld2410_read_config(ser)
-            if cfg is None:
-                print(f"[LD2410-{self.sensor_name}] diag open: config read failed "
-                      "(will show empty thresholds)", flush=True)
             ok = ld2410_enable_eng(ser)
+            if ok:
+                # The LD2410B requires settle time after 0x0062 (enable
+                # engineering mode) before 0x0061 (read config) returns
+                # valid register values.
+                #
+                # The albertnis/ld2410-configurator tool rate-limits all
+                # commands at 200 ms each and sends GET_MAC + READ_FW
+                # between enable_eng and read_config — providing ~600 ms
+                # of implicit settle time.  Without this delay our back-
+                # to-back send causes 0x0061 to return stale/garbage data
+                # (sensitivity values > 100, wildly wrong timeouts).
+                time.sleep(0.5)
+                try:
+                    ser.reset_input_buffer()
+                except Exception:
+                    pass
+                cfg = ld2410_read_config(ser)
+                if cfg is None:
+                    print(f"[LD2410-{self.sensor_name}] diag open: config read failed "
+                          "(will show empty thresholds)", flush=True)
         else:
             ok = ld2410_disable_eng(ser)
 
