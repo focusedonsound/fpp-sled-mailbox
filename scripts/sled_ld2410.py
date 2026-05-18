@@ -373,7 +373,7 @@ def ld2410_write_config(ser, cfg: Ld2410Config) -> bool:
     ser.flush()
     rsp = _read_cfg_response(ser)
     if not _cfg_ack(rsp):
-        print(f"[LD2410] 0x0060 (max gates/timeout) ACK failed — rsp={rsp!r}")
+        print(f"[LD2410] 0x0060 (max gates/timeout) ACK failed — rsp={rsp.hex() if rsp else repr(rsp)}")
         return False
     time.sleep(0.05)
 
@@ -390,8 +390,11 @@ def ld2410_write_config(ser, cfg: Ld2410Config) -> bool:
         ser.flush()
         rsp = _read_cfg_response(ser)
         if not _cfg_ack(rsp):
-            print(f"[LD2410] 0x0064 gate {gate} ACK failed — rsp={rsp!r}")
+            print(f"[LD2410] 0x0064 gate {gate} ACK failed — rsp={rsp.hex() if rsp else repr(rsp)}")
             return False
+        if gate == 0:
+            # Log the first gate ACK to confirm response format (hex bytes)
+            print(f"[LD2410] 0x0064 gate 0 ACK ok — rsp={rsp.hex() if rsp else repr(rsp)}")
         time.sleep(0.05)
 
     return True

@@ -330,11 +330,32 @@ class Ld2410UsbReader(threading.Thread):
         ld2410_exit_config(ser)   # back to basic mode
 
         if verified:
-            match = (list(verified.move_sensitivity)   == list(cfg.move_sensitivity) and
-                     list(verified.static_sensitivity) == list(cfg.static_sensitivity))
-            print(f"[LD2410-{self.sensor_name}] config write "
-                  f"{'verified OK (flash read-back)' if match else 'MISMATCH — flash differs from requested values'}",
-                  flush=True)
+            move_match   = list(verified.move_sensitivity)   == list(cfg.move_sensitivity)
+            static_match = list(verified.static_sensitivity) == list(cfg.static_sensitivity)
+            gate_match   = (verified.max_move_gate == cfg.max_move_gate and
+                            verified.max_static_gate == cfg.max_static_gate)
+            match = move_match and static_match and gate_match
+            if match:
+                print(f"[LD2410-{self.sensor_name}] config write verified OK (flash read-back)",
+                      flush=True)
+            else:
+                print(f"[LD2410-{self.sensor_name}] config write MISMATCH — flash differs from requested values",
+                      flush=True)
+                if not gate_match:
+                    print(f"[LD2410-{self.sensor_name}]   max_move_gate:   requested={cfg.max_move_gate}  got={verified.max_move_gate}",
+                          flush=True)
+                    print(f"[LD2410-{self.sensor_name}]   max_static_gate: requested={cfg.max_static_gate}  got={verified.max_static_gate}",
+                          flush=True)
+                if not move_match:
+                    print(f"[LD2410-{self.sensor_name}]   move_sens:    requested={list(cfg.move_sensitivity)}",
+                          flush=True)
+                    print(f"[LD2410-{self.sensor_name}]   move_sens:    got      ={list(verified.move_sensitivity)}",
+                          flush=True)
+                if not static_match:
+                    print(f"[LD2410-{self.sensor_name}]   static_sens:  requested={list(cfg.static_sensitivity)}",
+                          flush=True)
+                    print(f"[LD2410-{self.sensor_name}]   static_sens:  got      ={list(verified.static_sensitivity)}",
+                          flush=True)
         else:
             print(f"[LD2410-{self.sensor_name}] config write OK but flash read-back failed",
                   flush=True)
