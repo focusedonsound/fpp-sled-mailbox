@@ -345,12 +345,12 @@
             </span>
           </label>
           <div class="d-flex gap-2">
-            <button type="button" class="buttons btn-outline-light btn-sm"
+            <button type="button" class="sled-btn sled-btn-sm"
                     onclick="sledRadarPreset('vehicle')"
                     title="Vehicle preset: high near-field thresholds, detection zone 1.5–4.5 m, timeout 5 s. Best for counting cars in a driveway.">
               <i class="fas fa-fw fa-car"></i> Vehicle
             </button>
-            <button type="button" class="buttons btn-outline-light btn-sm"
+            <button type="button" class="sled-btn sled-btn-sm"
                     onclick="sledRadarPreset('person')"
                     title="Person preset: lower thresholds, detects all 9 gates (0–6.75 m), timeout 10 s. Best for detecting pedestrians approaching the mailbox.">
               <i class="fas fa-fw fa-person-walking"></i> Person
