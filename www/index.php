@@ -72,6 +72,14 @@ function daemonRunning() {
 $cfg         = loadConfig($configFile);
 $running     = daemonRunning();
 $serialPorts = listSerialPorts();
+
+// ── Plugin version (git describe / short hash) ─────────────────────────────
+function pluginVersion() {
+  $dir = dirname(__DIR__);
+  $v = trim(shell_exec("git -C " . escapeshellarg($dir) . " describe --tags --always 2>/dev/null") ?: '');
+  return $v ?: 'unknown';
+}
+$pluginVersion = pluginVersion();
 ?>
 <style>
 /* ── SLED plugin — explicit colours for FPP 9.x / 10.x compatibility ──────
@@ -197,6 +205,12 @@ $serialPorts = listSerialPorts();
         color:#fff; white-space:nowrap;">
       <i class="fas fa-fw fa-circle fa-xs"></i>
       <span id="sledDaemonPillText"><?php echo $running ? 'Daemon Running' : 'Daemon Stopped'; ?></span>
+    </span>
+    <!-- Plugin version badge -->
+    <span title="Plugin version / git commit" style="
+        font-size:.75rem; font-family:monospace;
+        color:#adb5bd; opacity:.9; white-space:nowrap;">
+      <?php echo htmlspecialchars($pluginVersion); ?>
     </span>
   </div>
   <div class="d-flex align-items-center gap-2 sled-donate-row">
