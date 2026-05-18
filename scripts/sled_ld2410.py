@@ -172,16 +172,27 @@ def _pack_cfg_frame(cmd: int, params: bytes = b"") -> bytes:
 def _cfg_ack(rsp: Optional[bytes]) -> bool:
     """
     Return True if the response payload carries a success ACK.
-    Status bytes are at rsp[2:4] and should be 0x00 0x00.
+
+    Standard commands (0x00FF enter, 0x00FE exit, 0x0060, 0x0061, 0x0062, 0x0063):
+      rsp = [cmd_lo][cmd_hi][status_lo][status_hi]  (4 bytes minimum)
+      Success: rsp[2]==0 and rsp[3]==0
+
+    Short-ACK commands (0x0064 RANGE_GATE_SENSITIVITY per albertnis decode.ts):
+      rsp = [cmd_lo][status]  (2 bytes)
+      Success: rsp[1]==0
+
     Mask bit-7 on each byte to tolerate USB-serial parity corruption
     (same adapter issue that corrupts the length field).
     """
-    return (
-        rsp is not None
-        and len(rsp) >= 4
-        and (rsp[2] & 0x7F) == 0
-        and (rsp[3] & 0x7F) == 0
-    )
+    if rsp is None:
+        return False
+    if len(rsp) >= 4:
+        # Standard 4-byte ACK: status is at bytes 2 and 3
+        return (rsp[2] & 0x7F) == 0 and (rsp[3] & 0x7F) == 0
+    if len(rsp) >= 2:
+        # Short 2-byte ACK (0x0064): status is at byte 1
+        return (rsp[1] & 0x7F) == 0
+    return False
 
 
 def _read_cfg_response(ser, timeout: float = 0.5) -> Optional[bytes]:
@@ -362,6 +373,7 @@ def ld2410_write_config(ser, cfg: Ld2410Config) -> bool:
     ser.flush()
     rsp = _read_cfg_response(ser)
     if not _cfg_ack(rsp):
+        print(f"[LD2410] 0x0060 (max gates/timeout) ACK failed — rsp={rsp!r}")
         return False
     time.sleep(0.05)
 
@@ -378,6 +390,7 @@ def ld2410_write_config(ser, cfg: Ld2410Config) -> bool:
         ser.flush()
         rsp = _read_cfg_response(ser)
         if not _cfg_ack(rsp):
+            print(f"[LD2410] 0x0064 gate {gate} ACK failed — rsp={rsp!r}")
             return False
         time.sleep(0.05)
 
