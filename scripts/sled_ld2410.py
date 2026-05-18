@@ -312,13 +312,22 @@ def ld2410_read_config(ser) -> Optional[Ld2410Config]:
     # [cmd_echo 2] [status 2] [head 1=0x01] [max_move_gate 1] [max_static_gate 1]
     # [move_sens 0..8 × 1] [static_sens 0..8 × 1] [timeout 2]
     data = rsp[4:]  # skip cmd echo + status
-    if len(data) < 1 + 1 + 1 + NUM_GATES + NUM_GATES + 2:
+    # Response layout (protocol v1.05, confirmed against albertnis/ld2410-configurator):
+    #   data[0]      head byte (0x01)
+    #   data[1]      maximumDistanceGate   — overall max; NOT per-type
+    #   data[2]      maximumMovingDistanceGate
+    #   data[3]      maximumStaticDistanceGate
+    #   data[4..12]  move_sensitivity[0..8]
+    #   data[13..21] static_sensitivity[0..8]
+    #   data[22..23] timeout_s (u16le)
+    # Total data bytes = 1+1+1+1+9+9+2 = 24
+    if len(data) < 1 + 1 + 1 + 1 + NUM_GATES + NUM_GATES + 2:
         return None
     i = 0
-    # head byte (0x01 according to protocol)
-    i += 1
-    max_move   = data[i];   i += 1
-    max_static = data[i];   i += 1
+    i += 1  # head byte (0x01)
+    i += 1  # maximumDistanceGate (overall max — not stored separately in Ld2410Config)
+    max_move   = data[i];   i += 1   # maximumMovingDistanceGate
+    max_static = data[i];   i += 1   # maximumStaticDistanceGate
     move_sens   = list(data[i:i + NUM_GATES]); i += NUM_GATES
     static_sens = list(data[i:i + NUM_GATES]); i += NUM_GATES
     timeout_s   = _u16le(data, i)
