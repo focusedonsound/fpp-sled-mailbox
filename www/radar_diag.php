@@ -421,6 +421,7 @@
   let srPollTimer  = null;
   let srDiagActive = false;
   let srSavedCfg   = null;     // last config confirmed written to device
+  let srFormLoaded = false;    // true once form has been populated from live device data
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -637,6 +638,25 @@
       return;
     }
 
+    // ── Populate form from device config on first live snapshot ─────────────
+    // The Python reader reads the radar's stored thresholds when entering
+    // diagnostic mode and includes them in every snapshot. We use the first
+    // valid snapshot to load the form, replacing the placeholder preset.
+    // srFormLoaded prevents subsequent polls from overwriting user edits.
+    if (!srFormLoaded && d.thresholds && Array.isArray(d.thresholds.moving)) {
+      const devCfg = {
+        max_move_gate:      d.max_gate   ?? 6,
+        timeout_s:          d.timeout    ?? 5,
+        move_sensitivity:   d.thresholds.moving,
+        static_sensitivity: d.thresholds.stationary || [],
+      };
+      srPopulateForm(devCfg);
+      // Record as the baseline so Reset to Saved restores hardware values
+      srSavedCfg = Object.assign({ max_static_gate: devCfg.max_move_gate }, devCfg);
+      srSetSaveStatus('Loaded from radar hardware', false);
+      srFormLoaded = true;
+    }
+
     // Status badge
     const statusMap = {
       none:    { text: 'ABSENT',  color: 'secondary' },
@@ -736,6 +756,8 @@
     document.body.style.overflow = '';
     srSetBadge('STARTING…', 'secondary');
     srSetSaveStatus('', false);
+    srFormLoaded = false;
+    srSavedCfg   = null;
   };
 
   /** Switch active tab (side). Restarts diagnostic on the new radar. */
@@ -747,11 +769,14 @@
     if (btn) btn.classList.add('active');
 
     srStopDiag();
-    srSide = side;
+    srSide       = side;
+    srFormLoaded = false;
+    srSavedCfg   = null;
     srSetBadge('STARTING…', 'secondary');
     document.getElementById('srDistLabel').innerHTML    = '<i class="fas fa-fw fa-ruler-horizontal"></i> &mdash;';
     document.getElementById('srPresenceLabel').innerHTML= '<i class="fas fa-fw fa-clock"></i> &mdash;';
     srSetSaveStatus('', false);
+    sledRadarPreset('vehicle');   // placeholder until radar config arrives
 
     srStartDiag(srSide);
   };
