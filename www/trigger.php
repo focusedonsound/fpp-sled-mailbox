@@ -27,6 +27,16 @@ switch ($action) {
       respond(false, "Failed to write command queue");
     respond(true, "Donation trigger queued.");
 
+  case 'special_1':
+    if (@file_put_contents($cmdQueue, "special_1\n") === false)
+      respond(false, "Failed to write command queue");
+    respond(true, "Special Message 1 trigger queued.");
+
+  case 'special_2':
+    if (@file_put_contents($cmdQueue, "special_2\n") === false)
+      respond(false, "Failed to write command queue");
+    respond(true, "Special Message 2 trigger queued.");
+
   case 'stop':
     if (@file_put_contents($cmdQueue, "stop\n") === false)
       respond(false, "Failed to write command queue");

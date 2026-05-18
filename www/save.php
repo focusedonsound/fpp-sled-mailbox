@@ -48,11 +48,25 @@ $cfg["videos"]["donation"] = pClips("donation_vid");
 // ── Pins + cooldowns ──────────────────────────────────────────────────────
 $pinLetter   = pStr("pin_letter");
 $pinDonation = pStr("pin_donation");
-$cfg["pins"]["letter"]   = ($pinLetter !== "")   ? (int)$pinLetter   : 17;
-$cfg["pins"]["donation"] = ($pinDonation !== "") ? (int)$pinDonation : null;
+$pinSpecial1 = pStr("pin_special_1");
+$pinSpecial2 = pStr("pin_special_2");
+
+$cfg["pins"]["letter"]    = ($pinLetter   !== "") ? (int)$pinLetter   : 17;
+$cfg["pins"]["donation"]  = ($pinDonation !== "") ? (int)$pinDonation : null;
+$cfg["pins"]["special_1"] = ($pinSpecial1 !== "") ? (int)$pinSpecial1 : null;
+$cfg["pins"]["special_2"] = ($pinSpecial2 !== "") ? (int)$pinSpecial2 : null;
 
 $cfg["letter"]["cooldown_s"]   = pFloat("letter_cooldown",   3.0);
 $cfg["donation"]["cooldown_s"] = pFloat("donation_cooldown", 5.0);
+
+// ── Special message slots ─────────────────────────────────────────────────
+$cfg["specials"]["special_1"]["label"]      = pStr("special1_label", "Special Message 1") ?: "Special Message 1";
+$cfg["specials"]["special_2"]["label"]      = pStr("special2_label", "Special Message 2") ?: "Special Message 2";
+$cfg["specials"]["special_1"]["cooldown_s"] = pFloat("special1_cooldown", 5.0);
+$cfg["specials"]["special_2"]["cooldown_s"] = pFloat("special2_cooldown", 5.0);
+
+$cfg["playlists"]["special_1"] = pClips("special1_pl");
+$cfg["playlists"]["special_2"] = pClips("special2_pl");
 
 // ── LD2410 ────────────────────────────────────────────────────────────────
 $cfg["ld2410"]["enabled"]            = pBool("ld2410_enabled");
@@ -154,8 +168,10 @@ $gpioEntries = array_values(array_filter($gpioEntries, function($e) {
 }));
 
 // Add disabled placeholder entries for configured pins
-$letterBcm   = $cfg["pins"]["letter"]   ?? null;
-$donationBcm = $cfg["pins"]["donation"] ?? null;
+$letterBcm   = $cfg["pins"]["letter"]    ?? null;
+$donationBcm = $cfg["pins"]["donation"]  ?? null;
+$special1Bcm = $cfg["pins"]["special_1"] ?? null;
+$special2Bcm = $cfg["pins"]["special_2"] ?? null;
 
 function sledGpioPlaceholder($pinName, $desc) {
     return [
@@ -174,6 +190,15 @@ if ($letterBcm && isset($bcmToP1[$letterBcm])) {
 }
 if ($donationBcm && isset($bcmToP1[$donationBcm])) {
     $gpioEntries[] = sledGpioPlaceholder($bcmToP1[$donationBcm], "SLED Donation Sensor — managed by SLED daemon (GPIO{$donationBcm})");
+}
+
+$sp1Label = $cfg["specials"]["special_1"]["label"] ?? "Special Message 1";
+$sp2Label = $cfg["specials"]["special_2"]["label"] ?? "Special Message 2";
+if ($special1Bcm && isset($bcmToP1[$special1Bcm])) {
+    $gpioEntries[] = sledGpioPlaceholder($bcmToP1[$special1Bcm], "SLED {$sp1Label} — managed by SLED daemon (GPIO{$special1Bcm})");
+}
+if ($special2Bcm && isset($bcmToP1[$special2Bcm])) {
+    $gpioEntries[] = sledGpioPlaceholder($bcmToP1[$special2Bcm], "SLED {$sp2Label} — managed by SLED daemon (GPIO{$special2Bcm})");
 }
 
 $gpioJson = json_encode(array_values($gpioEntries), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n";

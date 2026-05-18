@@ -11,9 +11,13 @@ function defaultCfg() {
       "donation"      => [],
       "play_timeout_s"=> 120,
     ],
-    "pins"      => ["letter" => 17, "donation" => ""],
+    "pins"      => ["letter" => 17, "donation" => "", "special_1" => "", "special_2" => ""],
     "letter"    => ["cooldown_s" => 3.0],
     "donation"  => ["cooldown_s" => 5.0],
+    "specials"  => [
+      "special_1" => ["label" => "Special Message 1", "cooldown_s" => 5.0],
+      "special_2" => ["label" => "Special Message 2", "cooldown_s" => 5.0],
+    ],
     "schedule"  => ["start" => "16:00", "end" => "22:00"],
     "ld2410"    => [
       "enabled"  => false,
@@ -409,6 +413,93 @@ $serialPorts = listSerialPorts();
     </div>
   </div>
 
+  <!-- ── Special Message Playlists ────────────────────────────────────── -->
+  <div class="fppTableWrapper fppTableWrapperAsTable mb-3">
+    <div class="fppTableContents fppFThScrollContainer">
+      <table class="fppSelectableRowTable" style="width:100%;">
+        <thead>
+          <tr>
+            <th colspan="2" style="padding:8px;">
+              <i class="fas fa-fw fa-star"></i> Special Message Playlists
+              <span class="text-muted fw-normal small ms-2">
+                Optional &mdash; playlists played when a special GPIO input fires &bull; configure pins &amp; labels in Sensors below
+              </span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+
+          <!-- Special 1 Playlists -->
+          <?php
+          $sp1Label = htmlspecialchars($cfg['specials']['special_1']['label'] ?? 'Special Message 1');
+          $sp1Pls   = $cfg['playlists']['special_1'] ?? [];
+          if (is_string($sp1Pls)) $sp1Pls = [$sp1Pls];
+          if (empty($sp1Pls)) $sp1Pls = [''];
+          ?>
+          <tr>
+            <td style="width:220px; padding:8px;">
+              <label class="mb-0"><i class="fas fa-fw fa-star"></i> <span class="sled-sp1-label"><?php echo $sp1Label; ?></span> Playlists</label>
+              <div class="text-muted small">Played in round-robin when triggered</div>
+            </td>
+            <td style="padding:8px;">
+              <div id="special1PlList">
+                <?php foreach ($sp1Pls as $plName): ?>
+                <div class="d-flex gap-2 mb-1 special-pl-row">
+                  <input type="text" class="form-control form-control-sm" name="special1_pl[]"
+                         list="fppPlaylists" placeholder="playlist name"
+                         value="<?php echo htmlspecialchars($plName); ?>" />
+                  <button type="button" class="sled-btn sled-btn-sm"
+                          onclick="sledRemoveSpecialPl(this)" title="Remove">
+                    <i class="fas fa-fw fa-trash"></i>
+                  </button>
+                </div>
+                <?php endforeach; ?>
+              </div>
+              <button type="button" class="sled-btn sled-btn-sm mt-1"
+                      onclick="sledAddSpecialPl(1)">
+                <i class="fas fa-fw fa-plus"></i> Add Playlist
+              </button>
+            </td>
+          </tr>
+
+          <!-- Special 2 Playlists -->
+          <?php
+          $sp2Label = htmlspecialchars($cfg['specials']['special_2']['label'] ?? 'Special Message 2');
+          $sp2Pls   = $cfg['playlists']['special_2'] ?? [];
+          if (is_string($sp2Pls)) $sp2Pls = [$sp2Pls];
+          if (empty($sp2Pls)) $sp2Pls = [''];
+          ?>
+          <tr>
+            <td style="padding:8px;">
+              <label class="mb-0"><i class="fas fa-fw fa-star"></i> <span class="sled-sp2-label"><?php echo $sp2Label; ?></span> Playlists</label>
+              <div class="text-muted small">Played in round-robin when triggered</div>
+            </td>
+            <td style="padding:8px;">
+              <div id="special2PlList">
+                <?php foreach ($sp2Pls as $plName): ?>
+                <div class="d-flex gap-2 mb-1 special-pl-row">
+                  <input type="text" class="form-control form-control-sm" name="special2_pl[]"
+                         list="fppPlaylists" placeholder="playlist name"
+                         value="<?php echo htmlspecialchars($plName); ?>" />
+                  <button type="button" class="sled-btn sled-btn-sm"
+                          onclick="sledRemoveSpecialPl(this)" title="Remove">
+                    <i class="fas fa-fw fa-trash"></i>
+                  </button>
+                </div>
+                <?php endforeach; ?>
+              </div>
+              <button type="button" class="sled-btn sled-btn-sm mt-1"
+                      onclick="sledAddSpecialPl(2)">
+                <i class="fas fa-fw fa-plus"></i> Add Playlist
+              </button>
+            </td>
+          </tr>
+
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- ── Sensors / GPIO ──────────────────────────────────────────────── -->
   <div class="fppTableWrapper fppTableWrapperAsTable mb-3">
     <div class="fppTableContents fppFThScrollContainer">
@@ -473,6 +564,85 @@ $serialPorts = listSerialPorts();
               </div>
             </td>
           </tr>
+
+          <?php
+          // Special slot helper vars
+          $pinS1Raw = $cfg['pins']['special_1'] ?? '';
+          $pinS2Raw = $cfg['pins']['special_2'] ?? '';
+          $pinS1    = ($pinS1Raw !== '' && $pinS1Raw !== null) ? (int)$pinS1Raw : '';
+          $pinS2    = ($pinS2Raw !== '' && $pinS2Raw !== null) ? (int)$pinS2Raw : '';
+          $labelS1  = $cfg['specials']['special_1']['label'] ?? 'Special Message 1';
+          $labelS2  = $cfg['specials']['special_2']['label'] ?? 'Special Message 2';
+          $cdS1     = (float)($cfg['specials']['special_1']['cooldown_s'] ?? 5.0);
+          $cdS2     = (float)($cfg['specials']['special_2']['cooldown_s'] ?? 5.0);
+          ?>
+
+          <!-- Special 1 -->
+          <tr>
+            <td style="padding:8px;">
+              <label class="mb-0"><i class="fas fa-fw fa-star"></i> Special 1 Pin</label>
+              <div class="text-muted small">Leave blank to disable</div>
+            </td>
+            <td style="padding:8px;">
+              <div class="input-group input-group-sm mb-1">
+                <span class="input-group-text">GPIO</span>
+                <input type="number" class="form-control form-control-sm" name="pin_special_1"
+                       min="1" max="40"
+                       value="<?php echo $pinS1; ?>"
+                       placeholder="none" />
+              </div>
+              <input type="text" class="form-control form-control-sm" name="special1_label"
+                     placeholder="Special Message 1"
+                     title="User-facing label for this input (shows in logs and MQTT)"
+                     value="<?php echo htmlspecialchars($labelS1); ?>"
+                     oninput="sledSyncSpecialLabel(1, this.value)" />
+            </td>
+            <td style="padding:8px;">
+              <label class="mb-0"><i class="fas fa-fw fa-clock-rotate-left"></i> Cooldown</label>
+            </td>
+            <td style="padding:8px;">
+              <div class="input-group input-group-sm" style="max-width:160px;">
+                <input type="number" class="form-control form-control-sm" name="special1_cooldown"
+                       min="0" max="60" step="0.5"
+                       value="<?php echo number_format($cdS1, 1); ?>" />
+                <span class="input-group-text">sec</span>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Special 2 -->
+          <tr>
+            <td style="padding:8px;">
+              <label class="mb-0"><i class="fas fa-fw fa-star"></i> Special 2 Pin</label>
+              <div class="text-muted small">Leave blank to disable</div>
+            </td>
+            <td style="padding:8px;">
+              <div class="input-group input-group-sm mb-1">
+                <span class="input-group-text">GPIO</span>
+                <input type="number" class="form-control form-control-sm" name="pin_special_2"
+                       min="1" max="40"
+                       value="<?php echo $pinS2; ?>"
+                       placeholder="none" />
+              </div>
+              <input type="text" class="form-control form-control-sm" name="special2_label"
+                     placeholder="Special Message 2"
+                     title="User-facing label for this input (shows in logs and MQTT)"
+                     value="<?php echo htmlspecialchars($labelS2); ?>"
+                     oninput="sledSyncSpecialLabel(2, this.value)" />
+            </td>
+            <td style="padding:8px;">
+              <label class="mb-0"><i class="fas fa-fw fa-clock-rotate-left"></i> Cooldown</label>
+            </td>
+            <td style="padding:8px;">
+              <div class="input-group input-group-sm" style="max-width:160px;">
+                <input type="number" class="form-control form-control-sm" name="special2_cooldown"
+                       min="0" max="60" step="0.5"
+                       value="<?php echo number_format($cdS2, 1); ?>" />
+                <span class="input-group-text">sec</span>
+              </div>
+            </td>
+          </tr>
+
         </tbody>
       </table>
     </div>
@@ -792,6 +962,12 @@ $serialPorts = listSerialPorts();
     </button>
     <button type="button" class="sled-btn" onclick="sledTrigger('donation')">
       <i class="fas fa-fw fa-gift"></i> Test Donation
+    </button>
+    <button type="button" class="sled-btn" onclick="sledTrigger('special_1')">
+      <i class="fas fa-fw fa-star"></i> Test Special 1
+    </button>
+    <button type="button" class="sled-btn" onclick="sledTrigger('special_2')">
+      <i class="fas fa-fw fa-star"></i> Test Special 2
     </button>
   </div>
 
@@ -1141,6 +1317,33 @@ function sledAddVid(type) {
 function sledRemoveVid(btn) {
   const row = btn.closest('.vid-row');
   if (row) row.remove();
+}
+
+// ── Special message playlist rows ────────────────────────────────────────
+function sledAddSpecialPl(slot) {
+  const list = document.getElementById('special' + slot + 'PlList');
+  if (!list) return;
+  const div = document.createElement('div');
+  div.className = 'd-flex gap-2 mb-1 special-pl-row';
+  div.innerHTML = `
+    <input type="text" class="form-control form-control-sm" name="special${slot}_pl[]"
+           list="fppPlaylists" placeholder="playlist name" />
+    <button type="button" class="sled-btn sled-btn-sm"
+            onclick="sledRemoveSpecialPl(this)" title="Remove">
+      <i class="fas fa-fw fa-trash"></i>
+    </button>`;
+  list.appendChild(div);
+}
+
+function sledRemoveSpecialPl(btn) {
+  const row = btn.closest('.special-pl-row');
+  if (row) row.remove();
+}
+
+// ── Live-sync label text to playlist section header ───────────────────────
+function sledSyncSpecialLabel(slot, value) {
+  const el = document.querySelector('.sled-sp' + slot + '-label');
+  if (el) el.textContent = value || ('Special Message ' + slot);
 }
 
 // ── Toggle opacity ───────────────────────────────────────────────────────
