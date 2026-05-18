@@ -802,8 +802,9 @@
 
   /** Write current form values to the radar and verify the hardware accepted them. */
   window.sledRadarSave = async function () {
-    const cfg = srReadForm();
-    const action = 'diag_set_' + srSide.toLowerCase();
+    const cfg      = srReadForm();
+    const saveSide = srSide;                            // capture now — user may switch tabs during await
+    const action   = 'diag_set_' + saveSide.toLowerCase();
     srSetSaveStatus('Writing to radar hardware…', false);
     try {
       // Step 1 — send config to daemon
@@ -820,7 +821,7 @@
       await new Promise(r => setTimeout(r, 2000));
 
       // Step 3 — re-read snapshot and compare thresholds to confirm hardware write
-      const vRes  = await fetch(srLiveUrl(srSide), { cache: 'no-store' });
+      const vRes  = await fetch(srLiveUrl(saveSide), { cache: 'no-store' });
       const vData = await vRes.json().catch(() => null);
 
       if (vData && vData.active && vData.thresholds && Array.isArray(vData.thresholds.moving)) {
@@ -831,7 +832,7 @@
 
         if (moveMatch && staticMatch) {
           srSavedCfg = Object.assign({ max_static_gate: cfg.max_move_gate }, cfg);
-          srSetSaveStatus('✓ Saved and verified on Radar ' + srSide, false);
+          srSetSaveStatus('✓ Saved and verified on Radar ' + saveSide, false);
         } else {
           srSetSaveStatus(
             '⚠ Sent but values not confirmed on hardware — check log for errors', true);
@@ -839,7 +840,7 @@
       } else {
         // Snapshot not active (radar may have restarted) — trust the send but warn
         srSavedCfg = Object.assign({ max_static_gate: cfg.max_move_gate }, cfg);
-        srSetSaveStatus('✓ Sent to Radar ' + srSide + ' (snapshot unavailable for verification)', false);
+        srSetSaveStatus('✓ Sent to Radar ' + saveSide + ' (snapshot unavailable for verification)', false);
       }
     } catch (e) {
       srSetSaveStatus('✗ Network error: ' + e.message, true);
