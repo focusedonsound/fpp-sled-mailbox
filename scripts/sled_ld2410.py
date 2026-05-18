@@ -346,27 +346,40 @@ def ld2410_write_config(ser, cfg: Ld2410Config) -> bool:
     Radar must be in config mode.
     Sends: set_range_gate (0x0060) then set_gate_sensitivity (0x0064) × 9.
     Returns True only if all commands ACK.
+
+    Wire format (matches albertnis/ld2410-configurator encode.ts):
+      Each parameter is encoded as: [subtype u16le] [value u32le]  (6 bytes)
+      0x0060: subtype 0 = max_move_gate, 1 = max_static_gate, 2 = timeout_s
+      0x0064: subtype 0 = gate index,    1 = motion sensitivity, 2 = static sensitivity
     """
-    # 1 — set max gates + timeout
-    params = struct.pack("<III",
-        cfg.max_move_gate,
-        cfg.max_static_gate,
-        cfg.timeout_s,
+    # 1 — set max gates + timeout (0x0060)
+    params = struct.pack("<HIHIHI",
+        0, cfg.max_move_gate,
+        1, cfg.max_static_gate,
+        2, cfg.timeout_s,
     )
     ser.write(_pack_cfg_frame(0x0060, params))
+    ser.flush()
     rsp = _read_cfg_response(ser)
     if not _cfg_ack(rsp):
         return False
+    time.sleep(0.05)
 
-    # 2 — per-gate sensitivities
+    # 2 — per-gate sensitivities (0x0064)
     for gate in range(NUM_GATES):
         move_s   = int(cfg.move_sensitivity[gate])   if gate < len(cfg.move_sensitivity)   else 0
         static_s = int(cfg.static_sensitivity[gate]) if gate < len(cfg.static_sensitivity) else 0
-        params = struct.pack("<III", gate, move_s, static_s)
+        params = struct.pack("<HIHIHI",
+            0, gate,
+            1, move_s,
+            2, static_s,
+        )
         ser.write(_pack_cfg_frame(0x0064, params))
+        ser.flush()
         rsp = _read_cfg_response(ser)
         if not _cfg_ack(rsp):
             return False
+        time.sleep(0.05)
 
     return True
 
