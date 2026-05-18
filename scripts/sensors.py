@@ -236,11 +236,20 @@ class Ld2410UsbReader(threading.Thread):
         return ok
 
     def _apply_config_write(self, ser, cfg: Ld2410Config) -> Optional["Ld2410Config"]:
-        """Write config to device flash, then read it back immediately to verify.
+        """Write config to device flash, then read it back to verify from flash.
 
-        Returns the config that the hardware now reports (via read-back), or None
-        if the write or verification read failed.  Leaves the radar in basic
-        (non-engineering) mode — caller must re-enable engineering mode afterward.
+        Two-phase approach to ensure the verification reads from flash (not the
+        in-memory buffer that is only valid before exit-config):
+
+          Phase 1 — Write:
+            enter_config → write_config → exit_config  (exit flushes RAM → flash)
+
+          Phase 2 — Verify:
+            enter_config → read_config → exit_config  (reads from flash)
+
+        Returns the config that the hardware now reports (via flash read-back),
+        or None if the write or verification read failed.  Leaves the radar in
+        basic (non-engineering) mode — caller must re-enable engineering mode.
         """
         try:
             ser.reset_input_buffer()
@@ -248,30 +257,49 @@ class Ld2410UsbReader(threading.Thread):
             pass
         time.sleep(0.05)
 
+        # ── Phase 1: write + flush to flash ───────────────────────────────────
         if not ld2410_enter_config(ser):
-            print(f"[LD2410-{self.sensor_name}] config write: enter_config failed",
+            print(f"[LD2410-{self.sensor_name}] config write: enter_config (phase 1) failed",
                   flush=True)
             return None
 
         write_ok = ld2410_write_config(ser, cfg)
+        ld2410_exit_config(ser)   # MUST exit before read-back — this flushes RAM→flash
+
         if not write_ok:
-            ld2410_exit_config(ser)
             print(f"[LD2410-{self.sensor_name}] config write: ld2410_write_config FAILED",
                   flush=True)
             return None
 
-        # Read back immediately (still in config mode) to confirm flash persistence
+        # Brief settle: give the LD2410 time to complete flash write before
+        # re-entering config mode for the verification read.
+        time.sleep(0.15)
+
+        # ── Phase 2: re-enter config and read back from flash ─────────────────
+        try:
+            ser.reset_input_buffer()
+        except Exception:
+            pass
+
+        if not ld2410_enter_config(ser):
+            # Write succeeded but we can't verify — return None so the caller
+            # knows to treat the result as unconfirmed rather than silently
+            # accepting stale config.
+            print(f"[LD2410-{self.sensor_name}] config write: enter_config (phase 2/verify) failed",
+                  flush=True)
+            return None
+
         verified = ld2410_read_config(ser)
-        ld2410_exit_config(ser)   # exits to basic mode
+        ld2410_exit_config(ser)   # back to basic mode
 
         if verified:
             match = (list(verified.move_sensitivity)   == list(cfg.move_sensitivity) and
                      list(verified.static_sensitivity) == list(cfg.static_sensitivity))
             print(f"[LD2410-{self.sensor_name}] config write "
-                  f"{'verified OK' if match else 'MISMATCH — hardware values differ'}",
+                  f"{'verified OK (flash read-back)' if match else 'MISMATCH — flash differs from requested values'}",
                   flush=True)
         else:
-            print(f"[LD2410-{self.sensor_name}] config write OK but read-back failed",
+            print(f"[LD2410-{self.sensor_name}] config write OK but flash read-back failed",
                   flush=True)
 
         return verified  # may be None if read-back failed
