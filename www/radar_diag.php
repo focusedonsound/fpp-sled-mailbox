@@ -212,6 +212,14 @@
           <i class="fas fa-fw fa-circle text-warning fa-beat-fade"></i> Diagnostic active
         </span>
       </div>
+      <!-- Status legend -->
+      <p class="text-muted mb-3" style="font-size:0.76rem; line-height:1.6;">
+        <span class="badge bg-secondary me-1">ABSENT</span> No target detected &nbsp;&bull;&nbsp;
+        <span class="badge bg-success me-1">MOVING</span> Target in motion &nbsp;&bull;&nbsp;
+        <span class="badge bg-info text-dark me-1">STATIC</span> Stationary target (parked / standing still) &nbsp;&bull;&nbsp;
+        <span class="badge bg-success me-1">PRESENT</span> Both moving &amp; stationary detected &nbsp;&bull;&nbsp;
+        <span class="badge bg-warning text-dark me-1">UNKNOWN</span> Target detected &mdash; status unrecognized (firmware variant)
+      </p>
 
       <!-- Live gate energy chart -->
       <div class="sr-chart-wrap">
@@ -231,10 +239,15 @@
       <div class="mb-3">
         <h6 style="font-size:0.9rem;">
           Per-Gate Sensitivity Thresholds
-          <span class="sr-tip" title="Each gate covers 0.75 m of range. Energy above the threshold at that gate counts as a detection. Lower values = more sensitive (but more false triggers). Gates 0-1 (0–1.5 m) are closest to the sensor — usually need high thresholds to ignore the mailbox itself. Use the Vehicle or Person preset buttons below as a starting point.">
+          <span class="sr-tip" data-bs-toggle="tooltip" data-bs-placement="top" title="Each gate covers 0.75 m of range. Energy above the threshold at that gate counts as a detection. Lower values = more sensitive (but more false triggers). Gates 0-1 (0–1.5 m) are closest to the sensor — usually need high thresholds to ignore the mailbox itself. Use the Vehicle or Person preset buttons below as a starting point.">
             <i class="fas fa-circle-question"></i>
           </span>
         </h6>
+        <p class="text-muted mb-2" style="font-size:0.78rem;">
+          0 &larr; <em>more sensitive (detects weaker signals)</em>
+          &nbsp;&middot;&middot;&middot;&middot;&middot;&nbsp;
+          <em>less sensitive (ignores noise)</em> &rarr; 100
+        </p>
         <div class="sr-gate-grid">
           <table>
             <thead>
@@ -252,7 +265,7 @@
               <tr title="Moving (motion) energy threshold per gate. The radar considers a target moving if its energy at this gate exceeds this value.">
                 <th class="sr-label" style="color:#3b82f6;">
                   <i class="fas fa-fw fa-person-walking"></i> Move
-                  <span class="sr-tip" title="Moving threshold per gate (0–100). Raise to reduce false positives from wind/vibration. Lower to detect slower-moving vehicles.">
+                  <span class="sr-tip" data-bs-toggle="tooltip" data-bs-placement="top" title="Moving threshold per gate (0–100). Raise to reduce false positives from wind/vibration. Lower to detect slower-moving vehicles.">
                     <i class="fas fa-circle-question"></i>
                   </span>
                 </th>
@@ -269,7 +282,7 @@
               <tr title="Stationary energy threshold per gate. Used to detect cars that have stopped (parked).">
                 <th class="sr-label" style="color:#fb923c;">
                   <i class="fas fa-fw fa-car"></i> Static
-                  <span class="sr-tip" title="Stationary threshold per gate (0–100). Gates 0-1 are typically set to 0 (disabled) to avoid the sensor detecting its own mounting. Raise for gates in your main detection zone if you get false parked-car detections.">
+                  <span class="sr-tip" data-bs-toggle="tooltip" data-bs-placement="top" title="Stationary threshold per gate (0–100). Gates 0-1 are typically set to 0 (disabled) to avoid the sensor detecting its own mounting. Raise for gates in your main detection zone if you get false parked-car detections.">
                     <i class="fas fa-circle-question"></i>
                   </span>
                 </th>
@@ -296,7 +309,7 @@
         <div class="sr-ctrl">
           <label for="srMaxGate">
             Max Gate Range
-            <span class="sr-tip" title="Maximum detection range in gates (each gate = 0.75 m). Gates beyond this are ignored by the radar hardware, saving processing and reducing false detections from distant objects. For a typical driveway, gates 5–6 (3.75–4.5 m) work well.">
+            <span class="sr-tip" data-bs-toggle="tooltip" data-bs-placement="top" title="Maximum detection range in gates (each gate = 0.75 m). Gates beyond this are ignored by the radar hardware, saving processing and reducing false detections from distant objects. For a typical driveway, gates 5–6 (3.75–4.5 m) work well.">
               <i class="fas fa-circle-question"></i>
             </span>
           </label>
@@ -313,7 +326,7 @@
         <div class="sr-ctrl">
           <label for="srTimeout">
             No-Presence Timeout
-            <span class="sr-tip" title="After all targets leave the detection zone, the radar continues to report 'presence' for this many seconds before clearing. Longer values reduce flutter (repeated on/off transitions) but slow down reaction time after a car leaves. Typical range: 3–15 seconds.">
+            <span class="sr-tip" data-bs-toggle="tooltip" data-bs-placement="top" title="After all targets leave the detection zone, the radar continues to report 'presence' for this many seconds before clearing. Longer values reduce flutter (repeated on/off transitions) but slow down reaction time after a car leaves. Typical range: 3–15 seconds.">
               <i class="fas fa-circle-question"></i>
             </span>
           </label>
@@ -327,7 +340,7 @@
         <div class="sr-ctrl">
           <label>
             Quick Presets
-            <span class="sr-tip" title="Apply pre-tuned sensitivity profiles. 'Vehicle' uses higher thresholds optimised for car-sized targets (suppresses near-field noise). 'Person' uses lower thresholds for pedestrian detection. You can adjust individual gate values after applying a preset before saving.">
+            <span class="sr-tip" data-bs-toggle="tooltip" data-bs-placement="top" title="Apply pre-tuned sensitivity profiles. 'Vehicle' uses higher thresholds optimised for car-sized targets (suppresses near-field noise). 'Person' uses lower thresholds for pedestrian detection. You can adjust individual gate values after applying a preset before saving.">
               <i class="fas fa-circle-question"></i>
             </span>
           </label>
@@ -349,12 +362,12 @@
 
       <!-- Action buttons -->
       <div class="sr-actions">
-        <button type="button" class="buttons btn-outline-light"
+        <button type="button" class="sled-btn"
                 onclick="sledRadarSave()"
                 title="Write the current threshold and range settings to the radar's flash memory. The radar will use these settings immediately and remember them after power-off. Car counting resumes automatically.">
           <i class="fas fa-fw fa-microchip"></i> Save to Radar
         </button>
-        <button type="button" class="buttons btn-outline-secondary btn-sm"
+        <button type="button" class="sled-btn sled-btn-sm"
                 onclick="sledRadarResetForm()"
                 title="Discard any unsaved changes and reload the last values read from the radar device.">
           <i class="fas fa-fw fa-rotate-left"></i> Reset to Saved
@@ -626,10 +639,11 @@
 
     // Status badge
     const statusMap = {
-      none:   { text: 'ABSENT',  color: 'secondary' },
-      moving: { text: 'MOVING',  color: 'success'   },
-      static: { text: 'STATIC',  color: 'info'       },
-      both:   { text: 'PRESENT', color: 'success'   },
+      none:    { text: 'ABSENT',  color: 'secondary' },
+      moving:  { text: 'MOVING',  color: 'success'   },
+      static:  { text: 'STATIC',  color: 'info'       },
+      both:    { text: 'PRESENT', color: 'success'   },
+      unknown: { text: 'UNKNOWN', color: 'warning'   },
     };
     const s = statusMap[d.status] || { text: (d.status || 'UNKNOWN').toUpperCase(), color: 'info' };
     srSetBadge(s.text, s.color);
@@ -691,6 +705,15 @@
     if (!modal) return;
     modal.classList.add('sr-open');
     document.body.style.overflow = 'hidden';
+
+    // Initialise Bootstrap tooltips for all sr-tip elements inside the modal
+    if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+      modal.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
+        var existing = bootstrap.Tooltip.getInstance(el);
+        if (existing) existing.dispose();
+        new bootstrap.Tooltip(el, { trigger: 'hover', container: '#sledRadarModal' });
+      });
+    }
 
     // Ensure Chart.js is available — it might not be on a slow load
     if (typeof Chart === 'undefined') {
