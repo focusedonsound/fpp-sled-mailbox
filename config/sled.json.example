@@ -15,12 +15,16 @@
     "special_1": null,
     "special_2": null
   },
+  "videos": {
+    "letter": [],
+    "donation": [],
+    "special_1": [],
+    "special_2": []
+  },
   "playlists": {
     "idle": "sled_idle",
     "letter": ["sled_letter"],
     "donation": [],
-    "special_1": [],
-    "special_2": [],
     "play_timeout_s": 120
   },
   "specials": {

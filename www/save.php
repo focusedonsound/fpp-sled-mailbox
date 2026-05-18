@@ -65,8 +65,8 @@ $cfg["specials"]["special_2"]["label"]      = pStr("special2_label", "Special Me
 $cfg["specials"]["special_1"]["cooldown_s"] = pFloat("special1_cooldown", 5.0);
 $cfg["specials"]["special_2"]["cooldown_s"] = pFloat("special2_cooldown", 5.0);
 
-$cfg["playlists"]["special_1"] = pClips("special1_pl");
-$cfg["playlists"]["special_2"] = pClips("special2_pl");
+$cfg["videos"]["special_1"] = pClips("special1_vid");
+$cfg["videos"]["special_2"] = pClips("special2_vid");
 
 // ── LD2410 ────────────────────────────────────────────────────────────────
 $cfg["ld2410"]["enabled"]            = pBool("ld2410_enabled");

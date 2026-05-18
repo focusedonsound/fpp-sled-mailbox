@@ -408,89 +408,70 @@ $serialPorts = listSerialPorts();
             </td>
           </tr>
 
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- ── Special Message Playlists ────────────────────────────────────── -->
-  <div class="fppTableWrapper fppTableWrapperAsTable mb-3">
-    <div class="fppTableContents fppFThScrollContainer">
-      <table class="fppSelectableRowTable" style="width:100%;">
-        <thead>
-          <tr>
-            <th colspan="2" style="padding:8px;">
-              <i class="fas fa-fw fa-star"></i> Special Message Playlists
-              <span class="text-muted fw-normal small ms-2">
-                Optional &mdash; playlists played when a special GPIO input fires &bull; configure pins &amp; labels in Sensors below
-              </span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-
-          <!-- Special 1 Playlists -->
+          <!-- Special 1 Videos -->
           <?php
           $sp1Label = htmlspecialchars($cfg['specials']['special_1']['label'] ?? 'Special Message 1');
-          $sp1Pls   = $cfg['playlists']['special_1'] ?? [];
-          if (is_string($sp1Pls)) $sp1Pls = [$sp1Pls];
-          if (empty($sp1Pls)) $sp1Pls = [''];
+          $sp1Vids  = $cfg['videos']['special_1'] ?? [];
+          if (is_string($sp1Vids)) $sp1Vids = [$sp1Vids];
+          if (empty($sp1Vids)) $sp1Vids = [''];
           ?>
           <tr>
-            <td style="width:220px; padding:8px;">
-              <label class="mb-0"><i class="fas fa-fw fa-star"></i> <span class="sled-sp1-label"><?php echo $sp1Label; ?></span> Playlists</label>
-              <div class="text-muted small">Played in round-robin when triggered</div>
+            <td style="padding:8px;">
+              <label class="mb-0"><i class="fas fa-fw fa-star"></i> <span class="sled-sp1-label"><?php echo $sp1Label; ?></span> Videos</label>
+              <div class="text-muted small">Played in round-robin when triggered &mdash; label set in Sensors below</div>
             </td>
             <td style="padding:8px;">
-              <div id="special1PlList">
-                <?php foreach ($sp1Pls as $plName): ?>
-                <div class="d-flex gap-2 mb-1 special-pl-row">
-                  <input type="text" class="form-control form-control-sm" name="special1_pl[]"
-                         list="fppPlaylists" placeholder="playlist name"
-                         value="<?php echo htmlspecialchars($plName); ?>" />
+              <div id="special1VidList">
+                <?php foreach ($sp1Vids as $vf): ?>
+                <div class="d-flex gap-2 mb-1 vid-row" data-type="special1">
+                  <select class="form-select form-select-sm" name="special1_vid[]">
+                    <option value="">— select a video file —</option>
+                  </select>
+                  <input type="hidden" class="vid-saved" value="<?php echo htmlspecialchars($vf); ?>" />
                   <button type="button" class="sled-btn sled-btn-sm"
-                          onclick="sledRemoveSpecialPl(this)" title="Remove">
+                          onclick="sledRemoveVid(this)" title="Remove">
                     <i class="fas fa-fw fa-trash"></i>
                   </button>
                 </div>
                 <?php endforeach; ?>
               </div>
               <button type="button" class="sled-btn sled-btn-sm mt-1"
-                      onclick="sledAddSpecialPl(1)">
-                <i class="fas fa-fw fa-plus"></i> Add Playlist
+                      onclick="sledAddVid('special1')">
+                <i class="fas fa-fw fa-plus"></i> Add Video
               </button>
             </td>
           </tr>
 
-          <!-- Special 2 Playlists -->
+          <!-- Special 2 Videos -->
           <?php
           $sp2Label = htmlspecialchars($cfg['specials']['special_2']['label'] ?? 'Special Message 2');
-          $sp2Pls   = $cfg['playlists']['special_2'] ?? [];
-          if (is_string($sp2Pls)) $sp2Pls = [$sp2Pls];
-          if (empty($sp2Pls)) $sp2Pls = [''];
+          $sp2Vids  = $cfg['videos']['special_2'] ?? [];
+          if (is_string($sp2Vids)) $sp2Vids = [$sp2Vids];
+          if (empty($sp2Vids)) $sp2Vids = [''];
           ?>
           <tr>
             <td style="padding:8px;">
-              <label class="mb-0"><i class="fas fa-fw fa-star"></i> <span class="sled-sp2-label"><?php echo $sp2Label; ?></span> Playlists</label>
-              <div class="text-muted small">Played in round-robin when triggered</div>
+              <label class="mb-0"><i class="fas fa-fw fa-star"></i> <span class="sled-sp2-label"><?php echo $sp2Label; ?></span> Videos</label>
+              <div class="text-muted small">Played in round-robin when triggered &mdash; label set in Sensors below</div>
             </td>
             <td style="padding:8px;">
-              <div id="special2PlList">
-                <?php foreach ($sp2Pls as $plName): ?>
-                <div class="d-flex gap-2 mb-1 special-pl-row">
-                  <input type="text" class="form-control form-control-sm" name="special2_pl[]"
-                         list="fppPlaylists" placeholder="playlist name"
-                         value="<?php echo htmlspecialchars($plName); ?>" />
+              <div id="special2VidList">
+                <?php foreach ($sp2Vids as $vf): ?>
+                <div class="d-flex gap-2 mb-1 vid-row" data-type="special2">
+                  <select class="form-select form-select-sm" name="special2_vid[]">
+                    <option value="">— select a video file —</option>
+                  </select>
+                  <input type="hidden" class="vid-saved" value="<?php echo htmlspecialchars($vf); ?>" />
                   <button type="button" class="sled-btn sled-btn-sm"
-                          onclick="sledRemoveSpecialPl(this)" title="Remove">
+                          onclick="sledRemoveVid(this)" title="Remove">
                     <i class="fas fa-fw fa-trash"></i>
                   </button>
                 </div>
                 <?php endforeach; ?>
               </div>
               <button type="button" class="sled-btn sled-btn-sm mt-1"
-                      onclick="sledAddSpecialPl(2)">
-                <i class="fas fa-fw fa-plus"></i> Add Playlist
+                      onclick="sledAddVid('special2')">
+                <i class="fas fa-fw fa-plus"></i> Add Video
               </button>
             </td>
           </tr>
@@ -1264,7 +1245,7 @@ let _sledMediaFiles = [];   // cached file list populated on page load
 
     // Fill all existing <select name="*_vid[]"> with options,
     // then restore the saved value from the adjacent hidden input
-    document.querySelectorAll('select[name="letter_vid[]"], select[name="donation_vid[]"]')
+    document.querySelectorAll('select[name="letter_vid[]"], select[name="donation_vid[]"], select[name="special1_vid[]"], select[name="special2_vid[]"]')
       .forEach(sel => sledPopulateVidSelect(sel));
 
   } catch(e) { /* non-critical */ }
@@ -1295,7 +1276,9 @@ function sledPopulateVidSelect(sel, savedVal) {
 }
 
 function sledAddVid(type) {
-  const listId = type === 'letter' ? 'letterVidList' : 'donationVidList';
+  const listMap = { letter: 'letterVidList', donation: 'donationVidList',
+                    special1: 'special1VidList', special2: 'special2VidList' };
+  const listId = listMap[type] || (type + 'VidList');
   const list   = document.getElementById(listId);
   if (!list) return;
   const div = document.createElement('div');
@@ -1319,31 +1302,11 @@ function sledRemoveVid(btn) {
   if (row) row.remove();
 }
 
-// ── Special message playlist rows ────────────────────────────────────────
-function sledAddSpecialPl(slot) {
-  const list = document.getElementById('special' + slot + 'PlList');
-  if (!list) return;
-  const div = document.createElement('div');
-  div.className = 'd-flex gap-2 mb-1 special-pl-row';
-  div.innerHTML = `
-    <input type="text" class="form-control form-control-sm" name="special${slot}_pl[]"
-           list="fppPlaylists" placeholder="playlist name" />
-    <button type="button" class="sled-btn sled-btn-sm"
-            onclick="sledRemoveSpecialPl(this)" title="Remove">
-      <i class="fas fa-fw fa-trash"></i>
-    </button>`;
-  list.appendChild(div);
-}
-
-function sledRemoveSpecialPl(btn) {
-  const row = btn.closest('.special-pl-row');
-  if (row) row.remove();
-}
-
-// ── Live-sync label text to playlist section header ───────────────────────
+// ── Live-sync label text to Event Videos section header ──────────────────
 function sledSyncSpecialLabel(slot, value) {
-  const el = document.querySelector('.sled-sp' + slot + '-label');
-  if (el) el.textContent = value || ('Special Message ' + slot);
+  document.querySelectorAll('.sled-sp' + slot + '-label').forEach(el => {
+    el.textContent = value || ('Special Message ' + slot);
+  });
 }
 
 // ── Toggle opacity ───────────────────────────────────────────────────────

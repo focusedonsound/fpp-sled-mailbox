@@ -460,13 +460,13 @@ def main() -> None:
     if not pl_donations:
         pl_donations = pl_letters[:1]
 
-    # Special message playlists (no video-file mode — always playlist-based)
-    pl_specials1 = pl_cfg.get("special_1", [])
-    pl_specials2 = pl_cfg.get("special_2", [])
-    if isinstance(pl_specials1, str): pl_specials1 = [pl_specials1]
-    if isinstance(pl_specials2, str): pl_specials2 = [pl_specials2]
-    pl_specials1 = [p for p in pl_specials1 if p]
-    pl_specials2 = [p for p in pl_specials2 if p]
+    # Special message video files (same pattern as letter/donation)
+    ev_specials1 = vid_cfg.get("special_1", [])
+    ev_specials2 = vid_cfg.get("special_2", [])
+    if isinstance(ev_specials1, str): ev_specials1 = [ev_specials1]
+    if isinstance(ev_specials2, str): ev_specials2 = [ev_specials2]
+    ev_specials1 = [f for f in ev_specials1 if f]
+    ev_specials2 = [f for f in ev_specials2 if f]
 
     # What actually runs for letter/donation events
     use_video_letter   = bool(ev_letters)
@@ -474,8 +474,8 @@ def main() -> None:
     log.info("Letter mode: %s  Donation mode: %s",
              f"video({ev_letters})"   if use_video_letter   else f"playlist({pl_letters})",
              f"video({ev_donations})" if use_video_donation else f"playlist({pl_donations})")
-    log.info("Special1 (%s) playlists: %s", special1_label, pl_specials1 or "(none — disabled)")
-    log.info("Special2 (%s) playlists: %s", special2_label, pl_specials2 or "(none — disabled)")
+    log.info("Special1 (%s) videos: %s", special1_label, ev_specials1 or "(none — disabled)")
+    log.info("Special2 (%s) videos: %s", special2_label, ev_specials2 or "(none — disabled)")
 
     # ── Subsystems ─────────────────────────────────────────────────────────────
     fpp = FPPPlayer()
@@ -737,8 +737,8 @@ def main() -> None:
 
             # ── SPECIAL 1 ────────────────────────────────────────────────────
             if ev == "s1":
-                if not pl_specials1:
-                    log.debug("[%s] No playlists configured — ignoring event", special1_label)
+                if not ev_specials1:
+                    log.debug("[%s] No videos configured — ignoring event", special1_label)
                     continue
                 if now_ts - last_special1_time < special1_cd_s:
                     log.debug("[%s] Ignored duplicate (cooldown)", special1_label)
@@ -747,13 +747,13 @@ def main() -> None:
 
                 idle_was_playing = (fpp.current_playlist() == pl_idle)
                 fpp.stop()
-                pl = pl_specials1[next_special1_idx % len(pl_specials1)]
+                media = ev_specials1[next_special1_idx % len(ev_specials1)]
                 next_special1_idx += 1
-                log.info("[%s] Playing playlist: %s", special1_label, pl)
-                fpp.play_once(pl, timeout_s=pl_timeout)
+                log.info("[%s] Playing video file: %s", special1_label, media)
+                fpp.play_file(media, timeout_s=pl_timeout)
 
                 now_iso = dt.datetime.now(dt.timezone.utc).astimezone().isoformat()
-                sp1_meta: dict = {"playlist": pl, "label": special1_label}
+                sp1_meta: dict = {"file": media, "label": special1_label}
                 ha.pulse_special(1)
                 ha.set_last_special(1, now_iso)
                 ha.event("special_1", {**sp1_meta, "ts": now_iso})
@@ -770,8 +770,8 @@ def main() -> None:
 
             # ── SPECIAL 2 ────────────────────────────────────────────────────
             if ev == "s2":
-                if not pl_specials2:
-                    log.debug("[%s] No playlists configured — ignoring event", special2_label)
+                if not ev_specials2:
+                    log.debug("[%s] No videos configured — ignoring event", special2_label)
                     continue
                 if now_ts - last_special2_time < special2_cd_s:
                     log.debug("[%s] Ignored duplicate (cooldown)", special2_label)
@@ -780,13 +780,13 @@ def main() -> None:
 
                 idle_was_playing = (fpp.current_playlist() == pl_idle)
                 fpp.stop()
-                pl = pl_specials2[next_special2_idx % len(pl_specials2)]
+                media = ev_specials2[next_special2_idx % len(ev_specials2)]
                 next_special2_idx += 1
-                log.info("[%s] Playing playlist: %s", special2_label, pl)
-                fpp.play_once(pl, timeout_s=pl_timeout)
+                log.info("[%s] Playing video file: %s", special2_label, media)
+                fpp.play_file(media, timeout_s=pl_timeout)
 
                 now_iso = dt.datetime.now(dt.timezone.utc).astimezone().isoformat()
-                sp2_meta: dict = {"playlist": pl, "label": special2_label}
+                sp2_meta: dict = {"file": media, "label": special2_label}
                 ha.pulse_special(2)
                 ha.set_last_special(2, now_iso)
                 ha.event("special_2", {**sp2_meta, "ts": now_iso})
