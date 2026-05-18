@@ -20,7 +20,7 @@ import sys
 import time
 import threading
 import queue
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 # ── Optional hardware imports ─────────────────────────────────────────────────
 # GPIO strategy (tried in order):
@@ -213,8 +213,21 @@ class Ld2410UsbReader(threading.Thread):
         except queue.Full:
             pass
 
-    def _apply_diag_change(self, ser, target: bool) -> bool:
-        """Switch radar to/from engineering mode. Returns True on success."""
+    def _apply_diag_change(self, ser, target: bool) -> "Tuple[bool, Optional[Ld2410Config]]":
+        """Switch radar to/from engineering mode.
+
+        Returns (success, cfg):
+          success — True if the mode-change command was accepted.
+          cfg     — Ld2410Config read in the *same* config session (only when
+                    target=True and success=True), or None otherwise.
+
+        Reading config before calling exit_config (while the device is still in
+        config mode) is critical.  Re-entering config mode after streaming has
+        resumed is unreliable — the 0x00FE preamble sent by ld2410_enter_config
+        can interact badly with an actively-streaming device and produce corrupt
+        or stale bytes in the read-back.  Doing both steps in one session avoids
+        that entirely.
+        """
         # Flush streaming data frames from the input buffer so the config
         # ACK isn't buried under 100 ms worth of radar frames.
         try:
@@ -225,15 +238,28 @@ class Ld2410UsbReader(threading.Thread):
         ok = ld2410_enter_config(ser)
         if not ok:
             print(f"[LD2410-{self.sensor_name}] enter_config failed", flush=True)
-            return False
+            return False, None
+
+        cfg: Optional[Ld2410Config] = None
         if target:
             ok = ld2410_enable_eng(ser)
+            if ok:
+                # Read config while still in config mode — before exit_config
+                # transitions the device back to (engineering) streaming mode.
+                # This is the only reliable window to read the flash config
+                # without a second enter_config call.
+                cfg = ld2410_read_config(ser)
+                if cfg is None:
+                    print(f"[LD2410-{self.sensor_name}] diag open: config read failed "
+                          "(will show empty thresholds)", flush=True)
         else:
             ok = ld2410_disable_eng(ser)
+
         ld2410_exit_config(ser)
         if ok:
-            print(f"[LD2410-{self.sensor_name}] engineering mode {'ON' if target else 'OFF'}", flush=True)
-        return ok
+            print(f"[LD2410-{self.sensor_name}] engineering mode {'ON' if target else 'OFF'}",
+                  flush=True)
+        return ok, cfg
 
     def _apply_config_write(self, ser, cfg: Ld2410Config) -> Optional["Ld2410Config"]:
         """Write config to device flash, then read it back to verify from flash.
@@ -400,35 +426,43 @@ class Ld2410UsbReader(threading.Thread):
                         self._new_cfg = None
 
                 if do_diag_change and diag_target != self._diag_mode:
-                    if self._apply_diag_change(ser, diag_target):
+                    changed_ok, diag_entry_cfg = self._apply_diag_change(ser, diag_target)
+                    if changed_ok:
                         with self._lock:
                             self._diag_mode = diag_target
-                        diag_cfg_loaded = False
+                        if diag_target and diag_entry_cfg is not None:
+                            # Config was read inside the same session — reliable.
+                            device_cfg      = diag_entry_cfg
+                            diag_cfg_loaded = True
+                        else:
+                            diag_cfg_loaded = False
                         buf.clear()
 
                 if pending_cfg is not None:
-                    # Write config and read it back from hardware to verify.
+                    # Write config and read it back from flash to verify.
                     # Returns verified hardware config (or None on failure).
                     # Leaves radar in basic mode — re-enable eng below.
                     verified_cfg = self._apply_config_write(ser, pending_cfg)
 
-                    # Always re-enable engineering streaming after config write
-                    if ld2410_enter_config(ser):
-                        ld2410_enable_eng(ser)
-                        ld2410_exit_config(ser)
+                    # Re-enable engineering streaming after config write.
+                    # Read config in the same session (target=True returns cfg).
+                    reopen_ok, reopen_cfg = self._apply_diag_change(ser, True)
 
-                    # Update device_cfg from the verified hardware read so the
-                    # snapshot reflects what the radar actually has in flash.
-                    # If read-back failed, fall back to pending_cfg cautiously.
+                    # Prefer the verified write read-back; fall back to the
+                    # re-enable session read if the write verify failed.
                     if verified_cfg is not None:
                         device_cfg = verified_cfg
+                    elif reopen_cfg is not None:
+                        device_cfg = reopen_cfg
                     else:
-                        device_cfg = pending_cfg  # best-effort fallback
+                        device_cfg = pending_cfg  # best-effort last resort
 
                     diag_cfg_loaded = True
                     buf.clear()  # discard frames accumulated during config write
 
                 # ── Load device config once when entering diag mode ────────
+                # Fallback: if _apply_diag_change didn't return a config
+                # (e.g. the in-session read failed), try a dedicated read.
                 if self._diag_mode and not diag_cfg_loaded:
                     device_cfg      = self._read_device_config(ser)
                     diag_cfg_loaded = True
@@ -486,7 +520,7 @@ class Ld2410UsbReader(threading.Thread):
             # Restore normal mode if we were in diag mode
             if self._diag_mode:
                 try:
-                    self._apply_diag_change(ser, False)
+                    self._apply_diag_change(ser, False)  # returns (bool, None) — discard
                 except Exception:
                     pass
             try:
