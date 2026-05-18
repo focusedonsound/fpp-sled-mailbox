@@ -172,27 +172,19 @@ def _pack_cfg_frame(cmd: int, params: bytes = b"") -> bytes:
 def _cfg_ack(rsp: Optional[bytes]) -> bool:
     """
     Return True if the response payload carries a success ACK.
-
-    Standard commands (0x00FF enter, 0x00FE exit, 0x0060, 0x0061, 0x0062, 0x0063):
-      rsp = [cmd_lo][cmd_hi][status_lo][status_hi]  (4 bytes minimum)
-      Success: rsp[2]==0 and rsp[3]==0
-
-    Short-ACK commands (0x0064 RANGE_GATE_SENSITIVITY per albertnis decode.ts):
-      rsp = [cmd_lo][status]  (2 bytes)
-      Success: rsp[1]==0
-
+    Standard response layout: [cmd_lo][cmd_hi][status_lo][status_hi]  (4+ bytes)
+    Success: status bytes (rsp[2] and rsp[3]) are both 0x00.
     Mask bit-7 on each byte to tolerate USB-serial parity corruption
     (same adapter issue that corrupts the length field).
+    Requires at least 4 bytes — shorter responses are rejected so that
+    partial/garbage reads do not cause false-positive entry into config mode.
     """
-    if rsp is None:
-        return False
-    if len(rsp) >= 4:
-        # Standard 4-byte ACK: status is at bytes 2 and 3
-        return (rsp[2] & 0x7F) == 0 and (rsp[3] & 0x7F) == 0
-    if len(rsp) >= 2:
-        # Short 2-byte ACK (0x0064): status is at byte 1
-        return (rsp[1] & 0x7F) == 0
-    return False
+    return (
+        rsp is not None
+        and len(rsp) >= 4
+        and (rsp[2] & 0x7F) == 0
+        and (rsp[3] & 0x7F) == 0
+    )
 
 
 def _read_cfg_response(ser, timeout: float = 0.5) -> Optional[bytes]:
@@ -275,7 +267,10 @@ def ld2410_enter_config(ser) -> bool:
         ser.flush()
         rsp = _read_cfg_response(ser, timeout=1.5)
         if _cfg_ack(rsp):
+            print(f"[LD2410] enter_config ACK (attempt {attempt}): {rsp.hex()}", flush=True)
             return True
+        print(f"[LD2410] enter_config attempt {attempt} failed — rsp={rsp.hex() if rsp else repr(rsp)}",
+              flush=True)
         time.sleep(0.2)
         try:
             ser.reset_input_buffer()
@@ -319,6 +314,12 @@ def ld2410_read_config(ser) -> Optional[Ld2410Config]:
     rsp = _read_cfg_response(ser, timeout=1.0)
     if rsp is None or len(rsp) < 4:
         return None
+
+    # Log the raw 0x0061 response bytes once so we can verify the parser
+    # offset layout against the actual firmware.  Output is suppressed after
+    # the first successful read to avoid log spam.
+    print(f"[LD2410] 0x0061 raw rsp ({len(rsp)} bytes): {rsp.hex()}", flush=True)
+
     # rsp layout after cmd echo + status:
     # [cmd_echo 2] [status 2] [head 1=0x01] [max_move_gate 1] [max_static_gate 1]
     # [move_sens 0..8 × 1] [static_sens 0..8 × 1] [timeout 2]
@@ -333,6 +334,7 @@ def ld2410_read_config(ser) -> Optional[Ld2410Config]:
     #   data[22..23] timeout_s (u16le)
     # Total data bytes = 1+1+1+1+9+9+2 = 24
     if len(data) < 1 + 1 + 1 + 1 + NUM_GATES + NUM_GATES + 2:
+        print(f"[LD2410] 0x0061 response too short: data={data.hex()}", flush=True)
         return None
     i = 0
     i += 1  # head byte (0x01)
@@ -342,6 +344,8 @@ def ld2410_read_config(ser) -> Optional[Ld2410Config]:
     move_sens   = list(data[i:i + NUM_GATES]); i += NUM_GATES
     static_sens = list(data[i:i + NUM_GATES]); i += NUM_GATES
     timeout_s   = _u16le(data, i)
+    print(f"[LD2410] 0x0061 parsed: max_move={max_move} max_static={max_static} "
+          f"move={move_sens} static={static_sens} timeout={timeout_s}s", flush=True)
     return Ld2410Config(
         max_move_gate      = max_move,
         max_static_gate    = max_static,
