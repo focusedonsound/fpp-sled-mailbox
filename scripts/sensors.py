@@ -242,16 +242,17 @@ class Ld2410UsbReader(threading.Thread):
 
         cfg: Optional[Ld2410Config] = None
         if target:
+            # Read config BEFORE enabling engineering mode.
+            # On some LD2410B firmware variants, sending 0x0062 (enable eng)
+            # before 0x0061 (read config) causes the read response to return
+            # stale or garbage register values.  Reading first (while the device
+            # is purely in config mode with no eng state change in-flight)
+            # consistently returns the correct flash values.
+            cfg = ld2410_read_config(ser)
+            if cfg is None:
+                print(f"[LD2410-{self.sensor_name}] diag open: config read failed "
+                      "(will show empty thresholds)", flush=True)
             ok = ld2410_enable_eng(ser)
-            if ok:
-                # Read config while still in config mode — before exit_config
-                # transitions the device back to (engineering) streaming mode.
-                # This is the only reliable window to read the flash config
-                # without a second enter_config call.
-                cfg = ld2410_read_config(ser)
-                if cfg is None:
-                    print(f"[LD2410-{self.sensor_name}] diag open: config read failed "
-                          "(will show empty thresholds)", flush=True)
         else:
             ok = ld2410_disable_eng(ser)
 
