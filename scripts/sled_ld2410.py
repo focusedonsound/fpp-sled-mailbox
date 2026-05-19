@@ -362,22 +362,32 @@ def ld2410_write_config(ser, cfg: Ld2410Config) -> bool:
     # The LD2410B writes each gate sensitivity to flash; back-to-back commands
     # at 50 ms cause intermittent rsp=None on later gates.
     CMD_DELAY = 0.20
+    CMD_RETRIES = 3   # resend on rsp=None or corrupt ACK before giving up
 
     def _send_cfg(frame: bytes, label: str) -> bool:
-        ser.write(frame)
-        ser.flush()
-        rsp = _read_cfg_response(ser)
-        ok = _cfg_ack(rsp)
-        if not ok:
-            print(f"[LD2410] {label} ACK failed — rsp={rsp.hex() if rsp else repr(rsp)}")
-        # Flush any extra bytes the device appended after the ACK payload
-        # (seen in practice on some firmware versions) before the next write.
-        try:
-            ser.reset_input_buffer()
-        except Exception:
-            pass
-        time.sleep(CMD_DELAY)
-        return ok
+        for attempt in range(CMD_RETRIES):
+            ser.write(frame)
+            ser.flush()
+            rsp = _read_cfg_response(ser, timeout=1.0)
+            if _cfg_ack(rsp):
+                if attempt > 0:
+                    print(f"[LD2410] {label} ACK ok on retry {attempt}", flush=True)
+                # Flush any extra bytes appended after the ACK payload
+                # (seen in practice: enter_config returns 8 bytes, not 4).
+                try:
+                    ser.reset_input_buffer()
+                except Exception:
+                    pass
+                time.sleep(CMD_DELAY)
+                return True
+            print(f"[LD2410] {label} attempt {attempt + 1}/{CMD_RETRIES} failed "
+                  f"— rsp={rsp.hex() if rsp else repr(rsp)}", flush=True)
+            try:
+                ser.reset_input_buffer()
+            except Exception:
+                pass
+            time.sleep(CMD_DELAY)
+        return False
 
     # 1 — set max gates + timeout (0x0060)
     params = struct.pack("<HIHIHI",

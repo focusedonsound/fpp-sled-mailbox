@@ -319,7 +319,7 @@ class Ld2410UsbReader(threading.Thread):
         # one read per gate is statistically clean.  Accept the first read that
         # matches the requested config; if none match, trust the write ACK
         # (same policy as albertnis/ld2410-configurator, which never re-reads).
-        MAX_VERIFY_ATTEMPTS = 3
+        MAX_VERIFY_ATTEMPTS = 5
         verified: Optional["Ld2410Config"] = None
         matched = False
 
