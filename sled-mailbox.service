@@ -1,7 +1,9 @@
 [Unit]
 Description=SLED Smart Letters to Santa Mailbox Daemon
-After=network.target fppd.service
-Wants=fppd.service
+# local-fs.target ensures any media partition is mounted before we start.
+# fppd.service ordering means we start after FPP itself (soft dependency only —
+# if fppd.service is absent on this system the ordering hint is ignored).
+After=local-fs.target network.target fppd.service
 
 [Service]
 Type=simple
@@ -9,9 +11,16 @@ User=fpp
 Group=fpp
 WorkingDirectory=/home/fpp/media/plugins/fpp-sled-mailbox/scripts
 Environment=PYTHONPATH=/home/fpp/media/plugins/fpp-sled-mailbox/scripts
+# Ensure the log directory exists before systemd opens the append: log file.
+# Without this, if /home/fpp/media/logs hasn't been created yet (e.g. first
+# boot, or media partition mounted late), systemd fails with "Failed to set up
+# standard output" before the Python process even launches.
+ExecStartPre=/bin/mkdir -p /home/fpp/media/logs
 ExecStart=/usr/bin/python3 /home/fpp/media/plugins/fpp-sled-mailbox/scripts/sled_daemon.py
 Restart=on-failure
-RestartSec=10
+RestartSec=15
+StartLimitBurst=4
+StartLimitIntervalSec=300
 StandardOutput=append:/home/fpp/media/logs/SledMailbox.log
 StandardError=append:/home/fpp/media/logs/SledMailbox.log
 

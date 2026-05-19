@@ -24,24 +24,6 @@ daemon_start() {
     # Ensure the logs dir exists even on first boot
     mkdir -p "/home/fpp/media/logs" 2>/dev/null || true
 
-    # Check if already running
-    if [[ -f "$PID_FILE" ]]; then
-        PID=$(cat "$PID_FILE" 2>/dev/null || true)
-        if [[ -n "$PID" ]] && kill -0 "$PID" 2>/dev/null; then
-            # Verify it really is our daemon (stale PIDs survive reboots)
-            if grep -q "sled_daemon" /proc/"$PID"/cmdline 2>/dev/null; then
-                log "Daemon already running (PID=$PID)"
-                return 0
-            fi
-        fi
-        rm -f "$PID_FILE"
-    fi
-
-    if [[ ! -f "$DAEMON" ]]; then
-        log "ERROR: daemon not found: $DAEMON"
-        return 1
-    fi
-
     # Read enabled flag from config
     ENABLED=$(python3 -c "
 import json, sys
@@ -60,6 +42,8 @@ except: print('true')
     # Runs every start but install_vendor.py skips packages already present,
     # so this is effectively instant after the first successful install.
     # Running here (not in fpp_install.sh) guarantees network is available.
+    # Must run BEFORE starting via systemd so packages exist when the daemon
+    # process launches (fpp_install.sh may have run without network).
     VENDOR_DIR="${PLUGIN_DIR}/scripts/vendor"
     INSTALL_PY="${PLUGIN_DIR}/scripts/install_vendor.py"
     if [[ -f "$INSTALL_PY" ]]; then
@@ -69,7 +53,45 @@ except: print('true')
             || log "WARN: install_vendor.py had errors (non-fatal)"
     fi
 
-    log "Starting SLED daemon..."
+    # ── Prefer systemd when the service is installed and enabled ─────────────
+    # sled-mailbox.service is installed by fpp_install.sh and starts the daemon
+    # automatically via systemd on every boot.  If we also start it here via
+    # nohup we end up with two instances competing for the serial ports.
+    # Delegate to systemctl when the service is enabled; fall back to nohup
+    # only when systemd is not managing the service (e.g. older install).
+    if systemctl is-enabled --quiet sled-mailbox 2>/dev/null; then
+        if systemctl is-active --quiet sled-mailbox 2>/dev/null; then
+            log "Daemon already running via systemd (skipping nohup start)"
+            return 0
+        fi
+        log "Starting daemon via systemctl..."
+        if systemctl start sled-mailbox >> "$LOG_FILE" 2>&1; then
+            log "Daemon started via systemctl"
+            return 0
+        fi
+        log "WARN: systemctl start failed — falling back to nohup"
+    fi
+
+    # ── Fallback: start directly via nohup ───────────────────────────────────
+    # Check if already running via PID file
+    if [[ -f "$PID_FILE" ]]; then
+        PID=$(cat "$PID_FILE" 2>/dev/null || true)
+        if [[ -n "$PID" ]] && kill -0 "$PID" 2>/dev/null; then
+            # Verify it really is our daemon (stale PIDs survive reboots)
+            if grep -q "sled_daemon" /proc/"$PID"/cmdline 2>/dev/null; then
+                log "Daemon already running (PID=$PID)"
+                return 0
+            fi
+        fi
+        rm -f "$PID_FILE"
+    fi
+
+    if [[ ! -f "$DAEMON" ]]; then
+        log "ERROR: daemon not found: $DAEMON"
+        return 1
+    fi
+
+    log "Starting SLED daemon (nohup)..."
     export PYTHONPATH="${PLUGIN_DIR}/scripts:${PYTHONPATH:-}"
     nohup python3 "$DAEMON" >> "$LOG_FILE" 2>&1 &
     echo "$!" > "$PID_FILE"
