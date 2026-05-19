@@ -73,7 +73,7 @@ try:
         ld2410_enter_config, ld2410_exit_config,
         ld2410_enable_eng, ld2410_disable_eng,
         ld2410_read_config, ld2410_write_config,
-        Ld2410Config,
+        Ld2410Config, Ld2410EngReport,
     )
     LD2410_AVAILABLE = True
 except ImportError:
@@ -259,7 +259,34 @@ class Ld2410UsbReader(threading.Thread):
                     ser.reset_input_buffer()
                 except Exception:
                     pass
-                cfg = ld2410_read_config(ser)
+                # Read config up to 3 times and take the result with fewest
+                # out-of-range values (> 100 after bit-7 masking indicates
+                # multi-bit serial corruption on the initial cold read).
+                cfg = None
+                best_anomalies = 999
+                for _attempt in range(3):
+                    _c = ld2410_read_config(ser)
+                    if _c is None:
+                        try:
+                            ser.reset_input_buffer()
+                        except Exception:
+                            pass
+                        time.sleep(0.1)
+                        continue
+                    _anomalies = sum(
+                        1 for v in _c.move_sensitivity + _c.static_sensitivity
+                        if v > 100
+                    ) + (1 if _c.max_move_gate > 9 else 0) + (1 if _c.max_static_gate > 9 else 0)
+                    if _anomalies < best_anomalies:
+                        best_anomalies = _anomalies
+                        cfg = _c
+                    if _anomalies == 0:
+                        break   # clean read — no need to retry
+                    try:
+                        ser.reset_input_buffer()
+                    except Exception:
+                        pass
+                    time.sleep(0.1)
                 if cfg is None:
                     print(f"[LD2410-{self.sensor_name}] diag open: config read failed "
                           "(will show empty thresholds)", flush=True)
@@ -307,6 +334,13 @@ class Ld2410UsbReader(threading.Thread):
             print(f"[LD2410-{self.sensor_name}] config write: ld2410_write_config FAILED",
                   flush=True)
             return None
+
+        # Write a placeholder snapshot immediately after the write ACKs so the
+        # JS verification poll (~4 s after save) finds fresh thresholds without
+        # waiting for the first live engineering frame (~3-4 s total).
+        # Energy arrays are zero — the chart will update on the next live frame.
+        if self.diag_output_path:
+            self._write_diag_snapshot(Ld2410EngReport(), cfg, ser)
 
         # Brief settle: give the LD2410 time to complete flash write before
         # re-entering config mode for the verification read.

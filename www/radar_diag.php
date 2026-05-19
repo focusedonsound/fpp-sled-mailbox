@@ -816,9 +816,10 @@
         return;
       }
 
-      // Step 2 — wait for daemon to apply config and write snapshot (~1.5 s)
+      // Step 2 — wait for daemon to apply config and write snapshot.
+      // Write takes ~2 s (10 cmds × 200 ms) + ~1 s re-enable = ~3 s total.
       srSetSaveStatus('⏳ Verifying…', false);
-      await new Promise(r => setTimeout(r, 2000));
+      await new Promise(r => setTimeout(r, 4000));
 
       // Step 3 — re-read snapshot and compare thresholds to confirm hardware write
       const vRes  = await fetch(srLiveUrl(saveSide), { cache: 'no-store' });

@@ -55,8 +55,10 @@ if (!is_array($data)) {
     exit;
 }
 
-// Mark active if snapshot is fresher than 2 seconds
+// Mark active if snapshot is fresher than 10 seconds.
+// Config writes take 3-4 s (10 commands × 200 ms + re-enable settle); the
+// previous 2 s threshold caused every post-save poll to see a stale file.
 $age = microtime(true) - (float)($data['ts'] ?? 0);
-$data['active'] = ($age < 2.0);
+$data['active'] = ($age < 10.0);
 
 echo json_encode($data);
