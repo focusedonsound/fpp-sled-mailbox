@@ -358,19 +358,35 @@ def ld2410_write_config(ser, cfg: Ld2410Config) -> bool:
       0x0060: subtype 0 = max_move_gate, 1 = max_static_gate, 2 = timeout_s
       0x0064: subtype 0 = gate index,    1 = motion sensitivity, 2 = static sensitivity
     """
+    # Inter-command delay matching albertnis/ld2410-configurator (200 ms).
+    # The LD2410B writes each gate sensitivity to flash; back-to-back commands
+    # at 50 ms cause intermittent rsp=None on later gates.
+    CMD_DELAY = 0.20
+
+    def _send_cfg(frame: bytes, label: str) -> bool:
+        ser.write(frame)
+        ser.flush()
+        rsp = _read_cfg_response(ser)
+        ok = _cfg_ack(rsp)
+        if not ok:
+            print(f"[LD2410] {label} ACK failed — rsp={rsp.hex() if rsp else repr(rsp)}")
+        # Flush any extra bytes the device appended after the ACK payload
+        # (seen in practice on some firmware versions) before the next write.
+        try:
+            ser.reset_input_buffer()
+        except Exception:
+            pass
+        time.sleep(CMD_DELAY)
+        return ok
+
     # 1 — set max gates + timeout (0x0060)
     params = struct.pack("<HIHIHI",
         0, cfg.max_move_gate,
         1, cfg.max_static_gate,
         2, cfg.timeout_s,
     )
-    ser.write(_pack_cfg_frame(0x0060, params))
-    ser.flush()
-    rsp = _read_cfg_response(ser)
-    if not _cfg_ack(rsp):
-        print(f"[LD2410] 0x0060 (max gates/timeout) ACK failed — rsp={rsp.hex() if rsp else repr(rsp)}")
+    if not _send_cfg(_pack_cfg_frame(0x0060, params), "0x0060 (max gates/timeout)"):
         return False
-    time.sleep(0.05)
 
     # 2 — per-gate sensitivities (0x0064)
     for gate in range(NUM_GATES):
@@ -381,13 +397,8 @@ def ld2410_write_config(ser, cfg: Ld2410Config) -> bool:
             1, move_s,
             2, static_s,
         )
-        ser.write(_pack_cfg_frame(0x0064, params))
-        ser.flush()
-        rsp = _read_cfg_response(ser)
-        if not _cfg_ack(rsp):
-            print(f"[LD2410] 0x0064 gate {gate} ACK failed — rsp={rsp.hex() if rsp else repr(rsp)}")
+        if not _send_cfg(_pack_cfg_frame(0x0064, params), f"0x0064 gate {gate}"):
             return False
-        time.sleep(0.05)
 
     return True
 
