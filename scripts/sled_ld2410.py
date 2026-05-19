@@ -267,10 +267,7 @@ def ld2410_enter_config(ser) -> bool:
         ser.flush()
         rsp = _read_cfg_response(ser, timeout=1.5)
         if _cfg_ack(rsp):
-            print(f"[LD2410] enter_config ACK (attempt {attempt}): {rsp.hex()}", flush=True)
             return True
-        print(f"[LD2410] enter_config attempt {attempt} failed — rsp={rsp.hex() if rsp else repr(rsp)}",
-              flush=True)
         time.sleep(0.2)
         try:
             ser.reset_input_buffer()
@@ -309,23 +306,20 @@ def ld2410_read_config(ser) -> Optional[Ld2410Config]:
     Read all gate sensitivities, max gates, and no-presence timeout.
     Radar must be in config mode.
     Returns Ld2410Config or None on failure.
+
+    Bit-7 masking: the USB-UART adapter used by this device randomly sets
+    bit 7 on received bytes due to marginal signal integrity at 256 kbaud.
+    All single-byte fields are masked with 0x7F on read so that corruption
+    does not produce out-of-range sensitivity or gate values.
     """
     ser.write(_pack_cfg_frame(0x0061))
     rsp = _read_cfg_response(ser, timeout=1.0)
     if rsp is None or len(rsp) < 4:
         return None
 
-    # Log the raw 0x0061 response bytes once so we can verify the parser
-    # offset layout against the actual firmware.  Output is suppressed after
-    # the first successful read to avoid log spam.
-    print(f"[LD2410] 0x0061 raw rsp ({len(rsp)} bytes): {rsp.hex()}", flush=True)
-
-    # rsp layout after cmd echo + status:
-    # [cmd_echo 2] [status 2] [head 1=0x01] [max_move_gate 1] [max_static_gate 1]
-    # [move_sens 0..8 × 1] [static_sens 0..8 × 1] [timeout 2]
     data = rsp[4:]  # skip cmd echo + status
     # Response layout (protocol v1.05, confirmed against albertnis/ld2410-configurator):
-    #   data[0]      head byte (0x01)
+    #   data[0]      head byte (0xAA)
     #   data[1]      maximumDistanceGate   — overall max; NOT per-type
     #   data[2]      maximumMovingDistanceGate
     #   data[3]      maximumStaticDistanceGate
@@ -334,18 +328,15 @@ def ld2410_read_config(ser) -> Optional[Ld2410Config]:
     #   data[22..23] timeout_s (u16le)
     # Total data bytes = 1+1+1+1+9+9+2 = 24
     if len(data) < 1 + 1 + 1 + 1 + NUM_GATES + NUM_GATES + 2:
-        print(f"[LD2410] 0x0061 response too short: data={data.hex()}", flush=True)
         return None
     i = 0
-    i += 1  # head byte (0x01)
+    i += 1  # head byte
     i += 1  # maximumDistanceGate (overall max — not stored separately in Ld2410Config)
-    max_move   = data[i];   i += 1   # maximumMovingDistanceGate
-    max_static = data[i];   i += 1   # maximumStaticDistanceGate
-    move_sens   = list(data[i:i + NUM_GATES]); i += NUM_GATES
-    static_sens = list(data[i:i + NUM_GATES]); i += NUM_GATES
-    timeout_s   = _u16le(data, i)
-    print(f"[LD2410] 0x0061 parsed: max_move={max_move} max_static={max_static} "
-          f"move={move_sens} static={static_sens} timeout={timeout_s}s", flush=True)
+    max_move   = data[i] & 0x7F;   i += 1   # maximumMovingDistanceGate
+    max_static = data[i] & 0x7F;   i += 1   # maximumStaticDistanceGate
+    move_sens   = [b & 0x7F for b in data[i:i + NUM_GATES]]; i += NUM_GATES
+    static_sens = [b & 0x7F for b in data[i:i + NUM_GATES]]; i += NUM_GATES
+    timeout_s   = (data[i] & 0x7F) | ((data[i + 1] & 0x7F) << 8)  # mask bit-7 in each byte
     return Ld2410Config(
         max_move_gate      = max_move,
         max_static_gate    = max_static,
@@ -396,9 +387,6 @@ def ld2410_write_config(ser, cfg: Ld2410Config) -> bool:
         if not _cfg_ack(rsp):
             print(f"[LD2410] 0x0064 gate {gate} ACK failed — rsp={rsp.hex() if rsp else repr(rsp)}")
             return False
-        if gate == 0:
-            # Log the first gate ACK to confirm response format (hex bytes)
-            print(f"[LD2410] 0x0064 gate 0 ACK ok — rsp={rsp.hex() if rsp else repr(rsp)}")
         time.sleep(0.05)
 
     return True
