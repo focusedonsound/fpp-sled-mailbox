@@ -952,10 +952,12 @@ $pluginVersion = pluginVersion();
               </div>
 
               <!-- Legend -->
-              <p class="text-muted mt-2 mb-0" style="font-size:0.75rem; text-align:center;">
+              <p class="text-muted mt-2 mb-0" style="font-size:0.75rem; text-align:center; line-height:1.8;">
                 <span style="color:#f44;">&#9679;</span> Detected target &nbsp;&bull;&nbsp;
-                Sweep angle = time axis (fades over one full sweep) &nbsp;&bull;&nbsp;
-                Open <strong>Radar Diagnostics</strong> for per-gate energy tuning
+                <span style="color:#00ff55;">&#9646;</span> Moving energy &nbsp;&bull;&nbsp;
+                <span style="color:#fb923c;">&#9646;</span> Static energy &nbsp;&bull;&nbsp;
+                Sweep = time axis, fades over one rotation &nbsp;&bull;&nbsp;
+                Open <strong>Radar Diagnostics</strong> for per-gate tuning
               </p>
             </td>
           </tr>
@@ -1511,14 +1513,23 @@ function sledRadarWidgetShow(enabled) {
       ctx.stroke();
 
       // Distance label — upper-left quadrant, sin<0 so it lands above CY
-      const la = Math.PI + 0.28 * Math.PI;
-      const lx = CX + r * Math.cos(la);
-      const ly = CY + r * Math.sin(la);
-      ctx.fillStyle = active ? 'rgba(100,200,255,0.55)' : 'rgba(100,200,255,0.18)';
-      ctx.font = '8px Courier New';
+      const la    = Math.PI + 0.28 * Math.PI;
+      const lx    = CX + r * Math.cos(la);
+      const ly    = CY + r * Math.sin(la);
+      const label = ((g + 1) * GATE_M).toFixed(2).replace('.00', '') + 'm';
+      ctx.font = 'bold 10px Courier New';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(((g + 1) * GATE_M).toFixed(2).replace('.00', '') + 'm', lx, ly);
+      if (active) {
+        // Dark pill background so the text stands out from the grid arcs
+        const tw = ctx.measureText(label).width;
+        ctx.fillStyle = 'rgba(0,8,20,0.72)';
+        ctx.beginPath();
+        ctx.roundRect(lx - tw / 2 - 3, ly - 6, tw + 6, 12, 3);
+        ctx.fill();
+      }
+      ctx.fillStyle = active ? 'rgba(140,220,255,0.90)' : 'rgba(100,200,255,0.18)';
+      ctx.fillText(label, lx, ly);
     }
 
     // Angle spokes every 45°
