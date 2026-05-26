@@ -657,25 +657,18 @@ $pluginVersion = pluginVersion();
         </thead>
         <tbody>
 
-          <!-- Enable toggle + Radar Diagnostics button -->
+          <!-- Enable toggle -->
           <tr>
             <td style="width:200px; padding:8px;">
               <label class="mb-0">Enable Car Counter</label>
               <div class="text-muted small">Activates both radar sensors</div>
             </td>
-            <td style="padding:8px;">
+            <td colspan="3" style="padding:8px;">
               <div class="form-check form-switch">
                 <input class="form-check-input" type="checkbox" name="ld2410_enabled" id="ld2410Enabled"
                        value="1" <?php echo !empty($cfg['ld2410']['enabled']) ? 'checked' : ''; ?>
-                       onchange="sledToggle('radarRows', this.checked)" />
+                       onchange="sledToggle('radarRows', this.checked); sledRadarWidgetShow(this.checked)" />
               </div>
-            </td>
-            <td colspan="2" style="padding:8px; text-align:right;">
-              <button type="button" class="sled-btn sled-btn-sm"
-                      onclick="sledRadarOpen()"
-                      title="Open the Radar Diagnostics panel to view live per-gate energy readings, tune sensitivity thresholds, and write settings directly to the radar hardware. Car counting on the selected radar is paused while the panel is open.">
-                <i class="fas fa-fw fa-radar"></i> Radar Diagnostics
-              </button>
             </td>
           </tr>
 
@@ -899,6 +892,73 @@ $pluginVersion = pluginVersion();
           </tr>
 
           </tbody><!-- end radarRows -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── Live Radar PPI Widget ─────────────────────────────────────── -->
+  <div id="sledRadarLiveSection" class="fppTableWrapper fppTableWrapperAsTable mb-3"
+       style="<?php echo empty($cfg['ld2410']['enabled']) ? 'display:none;' : ''; ?>">
+    <div class="fppTableContents">
+      <table class="fppSelectableRowTable" style="width:100%;">
+        <thead>
+          <tr>
+            <th style="padding:8px;">
+              <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <span>
+                  <i class="fas fa-fw fa-satellite-dish"></i> Live Radar View
+                  <span class="text-muted fw-normal small ms-2">Real-time PPI sweep — car counting active</span>
+                </span>
+                <button type="button" class="sled-btn sled-btn-sm"
+                        onclick="sledRadarOpen()"
+                        title="Open Radar Diagnostics for per-gate energy tuning (pauses car counting on selected sensor)">
+                  <i class="fas fa-fw fa-sliders"></i> Radar Diagnostics
+                </button>
+              </div>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding:12px;">
+              <!-- Canvas wrapper — flex, wraps on narrow screens -->
+              <div style="display:flex; flex-wrap:wrap; gap:16px; justify-content:center; align-items:flex-start;">
+
+                <!-- Radar A -->
+                <div style="display:flex; flex-direction:column; align-items:center; gap:6px; min-width:220px; flex:1 1 280px; max-width:340px;">
+                  <div style="font-size:0.78rem; font-weight:600; letter-spacing:2px; color:#4af;">
+                    <i class="fas fa-fw fa-satellite-dish"></i>
+                    RADAR A &mdash; <?php echo htmlspecialchars($cfg['direction']['label_toward'] ?? 'Inbound'); ?> side
+                  </div>
+                  <canvas id="sledPpiA" style="display:block; background:#000810; border:1px solid rgba(0,255,100,0.15); border-radius:4px; width:100%; max-width:340px;" height="180"></canvas>
+                  <div id="sledPpiStatusA" style="font-size:0.72rem; font-family:'Courier New',monospace; color:#0f0; background:rgba(0,255,100,0.04); border:1px solid rgba(0,255,100,0.12); border-radius:3px; padding:3px 10px; width:100%; text-align:center; letter-spacing:1px;">
+                    WAITING FOR DATA&hellip;
+                  </div>
+                </div>
+
+                <!-- Radar B -->
+                <div style="display:flex; flex-direction:column; align-items:center; gap:6px; min-width:220px; flex:1 1 280px; max-width:340px;">
+                  <div style="font-size:0.78rem; font-weight:600; letter-spacing:2px; color:#4af;">
+                    <i class="fas fa-fw fa-satellite-dish"></i>
+                    RADAR B &mdash; <?php echo htmlspecialchars($cfg['direction']['label_away'] ?? 'Outbound'); ?> side
+                  </div>
+                  <canvas id="sledPpiB" style="display:block; background:#000810; border:1px solid rgba(0,255,100,0.15); border-radius:4px; width:100%; max-width:340px;" height="180"></canvas>
+                  <div id="sledPpiStatusB" style="font-size:0.72rem; font-family:'Courier New',monospace; color:#0f0; background:rgba(0,255,100,0.04); border:1px solid rgba(0,255,100,0.12); border-radius:3px; padding:3px 10px; width:100%; text-align:center; letter-spacing:1px;">
+                    WAITING FOR DATA&hellip;
+                  </div>
+                </div>
+
+              </div>
+
+              <!-- Legend -->
+              <p class="text-muted mt-2 mb-0" style="font-size:0.75rem; text-align:center;">
+                <span style="color:#f44;">&#9679;</span> Detected target &nbsp;&bull;&nbsp;
+                Sweep angle = time axis (fades over one full sweep) &nbsp;&bull;&nbsp;
+                Open <strong>Radar Diagnostics</strong> for per-gate energy tuning
+              </p>
+            </td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -1394,5 +1454,357 @@ function sledUpdateDaemonPill(isRunning) {
   } catch(e) {
     // Network error — don't show banner, not worth alarming the user
   }
+})();
+
+// ── Show / hide the live radar widget section ─────────────────────────────
+function sledRadarWidgetShow(enabled) {
+  const el = document.getElementById('sledRadarLiveSection');
+  if (!el) return;
+  el.style.display = enabled ? '' : 'none';
+}
+
+// ── Live PPI Radar Widget ─────────────────────────────────────────────────
+(function () {
+  'use strict';
+
+  // ── Layout constants ─────────────────────────────────────────────────────
+  // Canvas logical size — CSS scales it to fill the container.
+  // These are the *drawing* dimensions; the canvas element's CSS width is
+  // 100% so the same pixel buffer looks sharp on any screen size.
+  const W      = 340;
+  const H      = 180;
+  const CX     = W / 2;
+  const CY     = H - 10;          // origin near bottom
+  const RMAX   = H - 28;          // max radius in drawing pixels
+
+  const NG        = 9;
+  const GATE_M    = 0.75;
+  const SWEEP_MS  = 6000;         // one full sweep (left → top → right)
+  const POLL_MS   = 1000;         // radar_live.php poll interval
+  const HISTORY   = Math.ceil(SWEEP_MS / POLL_MS) + 2;  // samples to keep
+
+  // ── Drawing helpers ───────────────────────────────────────────────────────
+
+  function gateR(g)    { return ((g + 1) / NG) * RMAX; }
+  function gateMid(g)  { return (g === 0 ? 0 : gateR(g - 1) + gateR(g)) / 2; }
+
+  function drawBackground(ctx) {
+    const bg = ctx.createRadialGradient(CX, CY, 0, CX, CY, RMAX);
+    bg.addColorStop(0,   '#001825');
+    bg.addColorStop(0.6, '#000f1a');
+    bg.addColorStop(1,   '#000810');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  function drawGrid(ctx, maxGate) {
+    ctx.save();
+    for (let g = 0; g < NG; g++) {
+      const r       = gateR(g);
+      const active  = g <= maxGate;
+      ctx.beginPath();
+      ctx.arc(CX, CY, r, Math.PI, 2 * Math.PI);
+      ctx.strokeStyle = active
+        ? (g % 2 === 0 ? 'rgba(80,180,255,0.22)' : 'rgba(80,180,255,0.11)')
+        : 'rgba(80,180,255,0.05)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Distance label — upper-left quadrant, sin<0 so it lands above CY
+      const la = Math.PI + 0.28 * Math.PI;
+      const lx = CX + r * Math.cos(la);
+      const ly = CY + r * Math.sin(la);
+      ctx.fillStyle = active ? 'rgba(100,200,255,0.55)' : 'rgba(100,200,255,0.18)';
+      ctx.font = '8px Courier New';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(((g + 1) * GATE_M).toFixed(2).replace('.00', '') + 'm', lx, ly);
+    }
+
+    // Angle spokes every 45°
+    for (let deg = 0; deg <= 180; deg += 45) {
+      const ca = Math.PI + (deg / 180) * Math.PI;
+      ctx.beginPath();
+      ctx.moveTo(CX, CY);
+      ctx.lineTo(CX + (RMAX + 2) * Math.cos(ca), CY + (RMAX + 2) * Math.sin(ca));
+      ctx.strokeStyle = 'rgba(80,180,255,0.12)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    // Ground line
+    ctx.beginPath();
+    ctx.moveTo(CX - RMAX - 4, CY);
+    ctx.lineTo(CX + RMAX + 4, CY);
+    ctx.strokeStyle = 'rgba(80,180,255,0.30)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Origin dot
+    ctx.beginPath();
+    ctx.arc(CX, CY, 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#0f0';
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawSweep(ctx, angle) {
+    ctx.save();
+    // Fading fan behind the leading edge
+    for (let i = 0; i < 16; i++) {
+      const a = angle - (i / 16) * 0.22;
+      ctx.beginPath();
+      ctx.moveTo(CX, CY);
+      ctx.lineTo(CX + RMAX * Math.cos(a), CY + RMAX * Math.sin(a));
+      ctx.strokeStyle = `rgba(0,255,70,${(1 - i / 16) * 0.17})`;
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+    // Bright leading edge
+    ctx.beginPath();
+    ctx.moveTo(CX, CY);
+    ctx.lineTo(CX + RMAX * Math.cos(angle), CY + RMAX * Math.sin(angle));
+    ctx.strokeStyle = 'rgba(0,255,80,0.92)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawHistory(ctx, history) {
+    if (!history.length) return;
+    ctx.save();
+    const total = history.length;
+    for (let hi = 0; hi < total; hi++) {
+      const h    = history[hi];
+      const age  = hi / Math.max(total - 1, 1);
+      const fade = Math.pow(1 - age, 1.3);
+
+      // Draw gate energy blobs (only when diag data available)
+      if (h.gates) {
+        const cosA = Math.cos(h.angle);
+        const sinA = Math.sin(h.angle);
+        for (let g = 0; g < NG; g++) {
+          const rMid = (g === 0 ? 0 : gateR(g - 1) + gateR(g)) / 2;
+          const px = CX + rMid * cosA;
+          const py = CY + rMid * sinA;
+          const me = (h.gates.moving     || [])[g] || 0;
+          const se = (h.gates.stationary || [])[g] || 0;
+          if (me > 6) {
+            const alpha  = Math.min(1, (me / 100) * fade * 1.2);
+            const radius = Math.max(3, (me / 100) * (RMAX / NG) * 0.75);
+            const gr = ctx.createRadialGradient(px, py, 0, px, py, radius);
+            gr.addColorStop(0, `rgba(0,255,80,${alpha})`);
+            gr.addColorStop(1, `rgba(0,255,80,0)`);
+            ctx.beginPath();
+            ctx.arc(px, py, radius, 0, Math.PI * 2);
+            ctx.fillStyle = gr;
+            ctx.fill();
+          }
+          if (se > 6) {
+            const alpha  = Math.min(1, (se / 100) * fade * 0.7);
+            const radius = Math.max(2, (se / 100) * (RMAX / NG) * 0.45);
+            const gr = ctx.createRadialGradient(px, py, 0, px, py, radius);
+            gr.addColorStop(0, `rgba(255,150,30,${alpha})`);
+            gr.addColorStop(1, `rgba(255,150,30,0)`);
+            ctx.beginPath();
+            ctx.arc(px, py, radius, 0, Math.PI * 2);
+            ctx.fillStyle = gr;
+            ctx.fill();
+          }
+        }
+      }
+
+      // Target dot
+      if (h.detectGate >= 0) {
+        const r  = (h.detectGate === 0 ? 0 : gateR(h.detectGate - 1) + gateR(h.detectGate)) / 2;
+        const px = CX + r * Math.cos(h.angle);
+        const py = CY + r * Math.sin(h.angle);
+        const da = fade * 0.95;
+        // Outer ring
+        ctx.beginPath();
+        ctx.arc(px, py, 7, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255,60,60,${da * 0.4})`;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        // Inner fill
+        ctx.beginPath();
+        ctx.arc(px, py, 4, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,60,60,${da})`;
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawHUD(ctx, latest, offline) {
+    ctx.save();
+    ctx.font = 'bold 10px Courier New';
+    ctx.textBaseline = 'top';
+    ctx.textAlign    = 'left';
+
+    if (offline) {
+      ctx.fillStyle = 'rgba(255,200,0,0.7)';
+      ctx.fillText('NO DATA', 6, 6);
+    } else if (latest) {
+      const dist   = latest.detectGate >= 0
+        ? ((latest.detectGate + 0.5) * GATE_M).toFixed(2) + 'm'
+        : '—';
+      const color  = {
+        moving:  '#00ff55',
+        static:  '#4af',
+        both:    '#00ff55',
+        none:    '#555',
+      }[latest.status] || '#555';
+
+      ctx.fillStyle = '#ff0';
+      ctx.fillText('DIST: ' + dist, 6, 6);
+      ctx.fillStyle = color;
+      ctx.fillText((latest.status || 'absent').toUpperCase(), 6, 19);
+    }
+    ctx.restore();
+  }
+
+  // ── Radar instance ────────────────────────────────────────────────────────
+
+  class SledPpiRadar {
+    constructor(canvasId, statusId, side) {
+      this.canvasId  = canvasId;
+      this.statusId  = statusId;
+      this.side      = side;          // 'a' or 'b'
+      this.history   = [];
+      this.startT    = performance.now();
+      this.maxGate   = 8;
+      this.offline   = true;
+      this._canvas   = null;
+      this._ctx      = null;
+    }
+
+    _ensureCanvas() {
+      if (this._canvas) return true;
+      const el = document.getElementById(this.canvasId);
+      if (!el) return false;
+      // Set internal resolution to match CSS width ratio
+      el.width  = W;
+      el.height = H;
+      this._canvas = el;
+      this._ctx    = el.getContext('2d');
+      return true;
+    }
+
+    sweepAngle(now) {
+      return Math.PI + ((now - this.startT) % SWEEP_MS) / SWEEP_MS * Math.PI;
+    }
+
+    ingestData(d) {
+      if (!d || !d.active) {
+        this.offline = true;
+        return;
+      }
+      this.offline  = false;
+      this.maxGate  = d.max_gate ?? 8;
+
+      // Compute detect gate from distance (normal mode) or use gates array (diag)
+      const dist       = d.distance || 0;
+      const hasGates   = d.gates && Array.isArray(d.gates.moving) &&
+                         d.gates.moving.some(v => v > 0);
+      let detectGate   = -1;
+
+      if (d.status && d.status !== 'none') {
+        detectGate = Math.min(NG - 1, Math.max(0, Math.floor(dist / GATE_M)));
+      }
+
+      const entry = {
+        angle:      this.sweepAngle(performance.now()),
+        detectGate: detectGate,
+        status:     d.status || 'none',
+        distance:   dist,
+        gates:      hasGates ? d.gates : null,
+      };
+
+      this.history.unshift(entry);
+      if (this.history.length > HISTORY) this.history.length = HISTORY;
+
+      // Update text status bar
+      const bar = document.getElementById(this.statusId);
+      if (bar) {
+        const distTxt = dist > 0 && d.status !== 'none'
+          ? ' | DIST: ' + dist.toFixed(2) + 'm'
+          : '';
+        const st = (d.status || 'none').toUpperCase();
+        bar.textContent = 'STATUS: ' + st + distTxt;
+        bar.style.color = {
+          MOVING:  '#00ff80',
+          STATIC:  '#4af',
+          BOTH:    '#00ff80',
+          NONE:    '#666',
+        }[st] || '#666';
+      }
+    }
+
+    draw(now) {
+      if (!this._ensureCanvas()) return;
+      const ctx = this._ctx;
+      ctx.clearRect(0, 0, W, H);
+      drawBackground(ctx);
+
+      // Clip to upper semicircle
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(CX - RMAX - 16, CY + 2);
+      ctx.arc(CX, CY, RMAX + 4, Math.PI, 2 * Math.PI);
+      ctx.lineTo(CX + RMAX + 16, CY + 2);
+      ctx.closePath();
+      ctx.clip();
+
+      drawGrid(ctx, this.maxGate);
+      drawHistory(ctx, this.history);
+      drawSweep(ctx, this.sweepAngle(now));
+
+      ctx.restore();
+      drawHUD(ctx, this.history[0] || null, this.offline);
+    }
+  }
+
+  // ── Bootstrap ─────────────────────────────────────────────────────────────
+
+  const ppiA = new SledPpiRadar('sledPpiA', 'sledPpiStatusA', 'a');
+  const ppiB = new SledPpiRadar('sledPpiB', 'sledPpiStatusB', 'b');
+
+  let _ppiRunning = false;
+
+  function ppiLoop(now) {
+    ppiA.draw(now);
+    ppiB.draw(now);
+    requestAnimationFrame(ppiLoop);
+  }
+
+  async function ppiPoll() {
+    // Only poll while the widget is visible
+    const section = document.getElementById('sledRadarLiveSection');
+    if (!section || section.style.display === 'none') return;
+    try {
+      const [rA, rB] = await Promise.all([
+        fetch(sledUrl('radar_live.php') + '&side=a', { cache: 'no-store' }).then(r => r.json()),
+        fetch(sledUrl('radar_live.php') + '&side=b', { cache: 'no-store' }).then(r => r.json()),
+      ]);
+      ppiA.ingestData(rA);
+      ppiB.ingestData(rB);
+    } catch (e) {
+      ppiA.ingestData(null);
+      ppiB.ingestData(null);
+    }
+  }
+
+  // Defer startup slightly so the DOM is ready and SLED_URL is defined
+  setTimeout(function () {
+    if (!_ppiRunning) {
+      _ppiRunning = true;
+      requestAnimationFrame(ppiLoop);
+      ppiPoll();
+      setInterval(ppiPoll, POLL_MS);
+    }
+  }, 400);
+
 })();
 </script>

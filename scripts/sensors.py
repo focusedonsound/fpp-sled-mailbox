@@ -488,11 +488,12 @@ class Ld2410UsbReader(threading.Thread):
             print(f"[LD2410-{self.sensor_name}] cannot open {self.port}: {exc}", flush=True)
             return
 
-        buf             = bytearray()
-        last_present    = False
-        last_diag_write = 0.0
+        buf              = bytearray()
+        last_present     = False
+        last_diag_write  = 0.0
+        last_norm_write  = 0.0   # throttle for normal-mode PPI snapshot
         device_cfg: Optional[Ld2410Config] = None
-        diag_cfg_loaded = False
+        diag_cfg_loaded  = False
 
         try:
             while not self._stop_ev.is_set():
@@ -597,6 +598,15 @@ class Ld2410UsbReader(threading.Thread):
                         self._emit(self.event_code + "_off")
 
                     last_present = present
+
+                    # ── Normal-mode PPI snapshot (throttled to ~2 Hz) ─────
+                    # Uses the same diag snapshot file so radar_live.php can
+                    # serve the always-visible index-page radar widget without
+                    # requiring engineering mode.  Gates array stays all-zeros
+                    # (normal frames don't carry per-gate energy).
+                    if (now - last_norm_write) >= 0.5:
+                        last_norm_write = now
+                        self._write_diag_snapshot(rep, device_cfg, ser)
 
         finally:
             # Restore normal mode if we were in diag mode
