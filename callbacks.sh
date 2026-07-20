@@ -38,21 +38,6 @@ except: print('true')
         return 0
     fi
 
-    # Install / verify vendored Python packages (pyserial, paho-mqtt).
-    # Runs every start but install_vendor.py skips packages already present,
-    # so this is effectively instant after the first successful install.
-    # Running here (not in fpp_install.sh) guarantees network is available.
-    # Must run BEFORE starting via systemd so packages exist when the daemon
-    # process launches (fpp_install.sh may have run without network).
-    VENDOR_DIR="${PLUGIN_DIR}/scripts/vendor"
-    INSTALL_PY="${PLUGIN_DIR}/scripts/install_vendor.py"
-    if [[ -f "$INSTALL_PY" ]]; then
-        log "Checking vendored Python packages..."
-        python3 "$INSTALL_PY" "$VENDOR_DIR" >> "$LOG_FILE" 2>&1 \
-            && log "Vendor packages OK" \
-            || log "WARN: install_vendor.py had errors (non-fatal)"
-    fi
-
     # ── Prefer systemd when the service is installed and enabled ─────────────
     # sled-mailbox.service is installed by fpp_install.sh and starts the daemon
     # automatically via systemd on every boot.  If we also start it here via

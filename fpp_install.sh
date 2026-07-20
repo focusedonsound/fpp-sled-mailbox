@@ -88,39 +88,34 @@ mkdir -p /home/fpp/media/config
 # Now that the dir exists, copy /tmp log into media log
 cat "$LOGFILE" >> "$MEDIA_LOG" 2>/dev/null || true
 
-# ── System packages ──────────────────────────────────────────────
-log "Installing system packages via apt-get..."
-if apt-get install -y --no-install-recommends \
-    python3-serial \
-    python3-paho-mqtt \
-    python3-gpiozero \
-    >> "$LOGFILE" 2>&1; then
-    log "apt-get packages installed OK"
+# pluginInfo.json's dependencies.packages block already declares
+# python3-serial, python3-paho-mqtt, and python3-gpiozero, so FPP 10+
+# installs them before this script runs (FPP_DEPS_RESOLVED=1 is exported in
+# that case). Only install them by hand here as a fallback for FPP 9, which
+# silently ignores the dependencies block.
+if [ -z "${FPP_DEPS_RESOLVED:-}" ]; then
+    log "Installing system packages via apt-get..."
+    if apt-get install -y --no-install-recommends \
+        python3-serial \
+        python3-paho-mqtt \
+        python3-gpiozero \
+        >> "$LOGFILE" 2>&1; then
+        log "apt-get packages installed OK"
+    else
+        log "WARN: apt-get failed or partial — pyserial/paho-mqtt/gpiozero may be missing"
+    fi
 else
-    log "WARN: apt-get failed or partial — will try pip3 fallbacks"
-fi
-
-# ── Vendor directory for pip packages (no root required) ─────────────────
-# Install critical packages into scripts/vendor/ so they work regardless
-# of whether apt-get had root access to install system-wide.
-VENDOR_DIR="${PLUGIN_DIR}/scripts/vendor"
-mkdir -p "$VENDOR_DIR"
-
-# Install critical packages into vendor dir using our pip-free downloader
-INSTALL_PY="${PLUGIN_DIR}/scripts/install_vendor.py"
-if [[ -f "$INSTALL_PY" ]]; then
-    log "Running install_vendor.py to fetch pyserial and paho-mqtt..."
-    python3 "$INSTALL_PY" "$VENDOR_DIR" >> "$LOGFILE" 2>&1 \
-        && log "install_vendor.py completed" \
-        || log "WARN: install_vendor.py had errors (check log above)"
-else
-    log "WARN: install_vendor.py not found — pyserial/paho-mqtt may be missing"
+    log "Dependencies already resolved by FPP (FPP_DEPS_RESOLVED=1); skipping manual apt-get."
 fi
 
 # ── Optional: Adafruit DHT support ────────────────────────────────
+# Not in pluginInfo.json's dependencies (DHT11 support is optional, not
+# needed by everyone), and not on apt -- pip is the right tool here per the
+# plugin guidelines' ad-hoc install rule. Installs into FPP's system Python
+# like FPP's own dependency resolution does, not a plugin-local vendor dir.
 if python3 -m pip --version >/dev/null 2>&1; then
     log "Installing optional Adafruit DHT library..."
-    python3 -m pip install --quiet --target="$VENDOR_DIR" adafruit-circuitpython-dht >> "$LOGFILE" 2>&1 \
+    python3 -m pip install --quiet --break-system-packages adafruit-circuitpython-dht >> "$LOGFILE" 2>&1 \
         || log "WARN: adafruit-dht install failed — DHT11 sensor disabled (non-fatal)"
 fi
 
