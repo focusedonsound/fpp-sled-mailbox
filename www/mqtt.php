@@ -9,7 +9,6 @@ ini_set('display_errors', '0');
 $CFG_PATH = "/home/fpp/media/config/sled.json";
 $CMD_FILE = "/home/fpp/media/logs/sled_trigger.cmd";
 $PID_FILE = "/home/fpp/media/logs/sled_daemon.pid";
-$FPP_SETTINGS = "/home/fpp/media/settings";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -27,19 +26,22 @@ function load_cfg($path) {
     return is_array($j) ? $j : [];
 }
 
-function read_fpp_mqtt($settingsFile) {
-    $out = ['host' => '', 'port' => 1883, 'username' => '', 'password' => ''];
-    if (!file_exists($settingsFile)) return $out;
-    foreach (file($settingsFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
-        if (strpos($line, '=') === false || $line[0] === '#') continue;
-        [$k, $v] = explode('=', $line, 2);
-        $k = trim($k); $v = trim($v, " \t\"'");
-        if ($k === 'MQTTServer')   $out['host']     = $v;
-        if ($k === 'MQTTPort')     $out['port']     = (int)$v;
-        if ($k === 'MQTTUsername') $out['username'] = $v;
-        if ($k === 'MQTTPassword') $out['password'] = $v;
-    }
-    return $out;
+function fpp_setting($name) {
+    $ctx = stream_context_create(["http" => ["timeout" => 5, "ignore_errors" => true]]);
+    $raw = @file_get_contents("http://localhost/api/settings/$name", false, $ctx);
+    if ($raw === false) return "";
+    $j = @json_decode($raw, true);
+    if (is_array($j)) return (string)($j["value"] ?? $j[$name] ?? "");
+    return trim($raw);
+}
+
+function read_fpp_mqtt() {
+    return [
+        'host'     => fpp_setting('MQTTServer'),
+        'port'     => (int)(fpp_setting('MQTTPort') ?: 1883),
+        'username' => fpp_setting('MQTTUsername'),
+        'password' => fpp_setting('MQTTPassword'),
+    ];
 }
 
 function daemon_running($pf) {
@@ -88,7 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'test') {
         $cfg    = load_cfg($CFG_PATH);
         $useFpp = !empty($cfg['mqtt']['use_fpp_settings']);
-        $fpp    = $useFpp ? read_fpp_mqtt($FPP_SETTINGS) : [];
+        $fpp    = $useFpp ? read_fpp_mqtt() : [];
 
         $host = trim($_POST['host'] ?? '') ?: ($useFpp ? ($fpp['host'] ?? '') : '');
         $port = (int)(trim($_POST['port'] ?? '') ?: ($useFpp ? ($fpp['port'] ?? 1883) : 1883));
@@ -121,7 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // ── GET — load config ─────────────────────────────────────────────────────────
 
 $cfg     = load_cfg($CFG_PATH);
-$fppMqtt = read_fpp_mqtt($FPP_SETTINGS);
+$fppMqtt = read_fpp_mqtt();
 $running = daemon_running($PID_FILE);
 $mqtt    = array_merge([
     'use_fpp_settings' => true,

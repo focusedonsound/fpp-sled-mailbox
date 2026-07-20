@@ -10,7 +10,7 @@ HA discovery:
   homeassistant/{component}/{dev_id}_{obj_id}/config   ← retained config
   (cleared by remove_discovery() for clean plugin uninstall)
 
-FPP MQTT settings are read from /home/fpp/media/settings (flat key=value).
+FPP MQTT settings are read via FPP's settings API (/api/settings/<name>).
 SLED can override any field via sled.json → mqtt section.
 """
 from __future__ import annotations
@@ -20,6 +20,8 @@ import logging
 import os
 import socket
 import time
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -32,9 +34,7 @@ except ImportError:
 
 _LOGGER = logging.getLogger(__name__)
 
-# FPP stores settings as a flat "KEY=value" file
-_FPP_SETTINGS_FILE = "/home/fpp/media/settings"
-# Some FPP builds also write a JSON version; try it as fallback
+# Some FPP builds also write a JSON version of MQTT settings; try it as fallback
 _FPP_MQTT_JSON = "/home/fpp/media/config/mqtt_settings.json"
 
 
@@ -42,32 +42,41 @@ _FPP_MQTT_JSON = "/home/fpp/media/config/mqtt_settings.json"
 # FPP settings helpers
 # ---------------------------------------------------------------------------
 
+def _fpp_setting(name: str) -> str:
+    """Read one FPP setting via the settings API -- the raw settings file's
+    format is not a stable contract across FPP releases."""
+    try:
+        req = urllib.request.Request(f"http://localhost/api/settings/{name}")
+        with urllib.request.urlopen(req, timeout=5) as r:
+            body = r.read().decode().strip()
+        try:
+            data = json.loads(body)
+            if isinstance(data, dict):
+                return str(data.get("value", data.get(name, ""))).strip()
+            return str(data).strip()
+        except json.JSONDecodeError:
+            return body
+    except Exception as exc:
+        _LOGGER.debug("FPP settings API read error for %s: %s", name, exc)
+        return ""
+
+
 def load_fpp_mqtt_settings() -> Dict[str, Any]:
     """
     Read MQTT credentials from FPP's own settings.
-    Tries the flat settings file first, then the JSON fallback.
+    Tries the settings API first, then the JSON fallback.
     Returns a dict with keys: host, port, username, password.
     """
-    # 1 — Flat file  (newer / all current FPP versions)
-    if os.path.exists(_FPP_SETTINGS_FILE):
-        kv: Dict[str, str] = {}
-        try:
-            with open(_FPP_SETTINGS_FILE) as f:
-                for line in f:
-                    line = line.strip()
-                    if "=" in line and not line.startswith("#"):
-                        key, _, val = line.partition("=")
-                        kv[key.strip()] = val.strip().strip("\"'")
-        except Exception as exc:
-            _LOGGER.debug("FPP settings read error: %s", exc)
-
-        if kv.get("MQTTServer"):
-            return {
-                "host":     kv.get("MQTTServer", ""),
-                "port":     int(kv.get("MQTTPort", 1883) or 1883),
-                "username": kv.get("MQTTUsername", ""),
-                "password": kv.get("MQTTPassword", ""),
-            }
+    # 1 — FPP settings API  (newer / all current FPP versions)
+    host = _fpp_setting("MQTTServer")
+    if host:
+        port_str = _fpp_setting("MQTTPort")
+        return {
+            "host":     host,
+            "port":     int(port_str) if port_str.isdigit() else 1883,
+            "username": _fpp_setting("MQTTUsername"),
+            "password": _fpp_setting("MQTTPassword"),
+        }
 
     # 2 — JSON fallback
     if os.path.exists(_FPP_MQTT_JSON):

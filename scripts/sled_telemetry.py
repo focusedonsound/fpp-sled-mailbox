@@ -44,13 +44,19 @@ def _get_pi_model() -> str:
 
 
 def _get_fpp_version() -> str:
-    """Read FPP version from /home/fpp/media/settings."""
+    """Read FPP version via the settings API -- the raw settings file's
+    format is not a stable contract across FPP releases."""
     try:
-        with open("/home/fpp/media/settings") as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith("fppVersion"):
-                    return line.split("=", 1)[1].strip()
+        req = urllib.request.Request("http://localhost/api/settings/fppVersion")
+        with urllib.request.urlopen(req, timeout=5) as r:
+            body = r.read().decode().strip()
+        try:
+            data = json.loads(body)
+            if isinstance(data, dict):
+                return str(data.get("value", data.get("fppVersion", ""))).strip()
+            return str(data).strip()
+        except json.JSONDecodeError:
+            return body
     except Exception:
         pass
     return ""

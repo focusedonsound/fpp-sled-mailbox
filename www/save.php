@@ -153,12 +153,32 @@ function sledGpioEntry($pinName, $desc, $command) {
 // Disabled entries appear in FPP's GPIO Inputs list (so users know the pins
 // are reserved) but fppd never sets up edge detection for them, so the daemon
 // can claim the pins safely.
-$gpioFile    = "/home/fpp/media/config/gpio.json";
 $gpioMsg     = "";
 
+// Go through FPP's configfile API rather than reading/writing
+// /home/fpp/media/config directly -- gpio.json is FPP's shared GPIO config,
+// not this plugin's own data.
+function fppApiGetConfigFile($name) {
+    $ctx = stream_context_create(["http" => ["timeout" => 5, "ignore_errors" => true]]);
+    $result = @file_get_contents("http://localhost/api/configfile/$name", false, $ctx);
+    return $result === false ? null : $result;
+}
+function fppApiPostConfigFile($name, $body) {
+    $ctx = stream_context_create(["http" => [
+        "method"  => "POST",
+        "header"  => "Content-Type: text/plain\r\n",
+        "content" => $body,
+        "timeout" => 5,
+        "ignore_errors" => true,
+    ]]);
+    $result = @file_get_contents("http://localhost/api/configfile/$name", false, $ctx);
+    return $result !== false;
+}
+
 $gpioEntries = [];
-if (file_exists($gpioFile)) {
-    $gj = @json_decode(@file_get_contents($gpioFile), true);
+$gpioRaw = fppApiGetConfigFile("gpio.json");
+if ($gpioRaw !== null) {
+    $gj = @json_decode($gpioRaw, true);
     if (is_array($gj)) $gpioEntries = $gj;
 }
 
@@ -202,8 +222,7 @@ if ($special2Bcm && isset($bcmToP1[$special2Bcm])) {
 }
 
 $gpioJson = json_encode(array_values($gpioEntries), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n";
-$gpioTmp  = $gpioFile . ".tmp";
-if (@file_put_contents($gpioTmp, $gpioJson) !== false && @rename($gpioTmp, $gpioFile)) {
+if (fppApiPostConfigFile("gpio.json", $gpioJson)) {
     $gpioMsg = " GPIO pins marked as reserved in FPP GPIO Inputs (disabled — SLED daemon owns them).";
 } else {
     $gpioMsg = " Note: could not update GPIO config (check permissions).";
