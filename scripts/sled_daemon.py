@@ -48,7 +48,11 @@ except ImportError:
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 CONFIG_FILE    = "/home/fpp/media/config/sled.json"
-LOG_FILE       = "/home/fpp/media/logs/SledMailbox.log"
+# LOGDIR is set by FPP for scripts/daemons it manages; fall back to the
+# default media path when it isn't (e.g. run standalone for testing).
+_LOGDIR        = os.environ.get("LOGDIR", "/home/fpp/media/logs")
+# Same file the install script logs to -- one FPP-conformant log per plugin.
+LOG_FILE       = os.path.join(_LOGDIR, "plugin-fpp-sled-mailbox.log")
 CMD_QUEUE_FILE = "/home/fpp/media/logs/sled_trigger.cmd"
 PID_FILE       = "/home/fpp/media/logs/sled_daemon.pid"
 
@@ -875,7 +879,7 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as exc:
-        # Log the full traceback so it appears in SledMailbox.log rather than
+        # Log the full traceback so it appears in the plugin log rather than
         # disappearing silently.  This catches any unhandled crash in main().
         import traceback
         msg = traceback.format_exc()

@@ -761,7 +761,7 @@ Home Assistant will auto-discover these as sensors.
 
 **Check the log:**
 ```bash
-tail -f /home/fpp/media/logs/SledMailbox.log
+tail -f /home/fpp/media/logs/plugin-fpp-sled-mailbox.log
 ```
 
 **Check systemd status:**
@@ -782,7 +782,7 @@ sudo journalctl -u sled-mailbox --no-pager -n 50
 - Make sure the video file exists at the path you specified
 - Check that the file is readable: `ls -la /home/fpp/media/videos/`
 - Verify FPP's REST API is running: `curl http://localhost/api/fppd/status`
-- Check `SledMailbox.log` for FPP API error messages
+- Check `plugin-fpp-sled-mailbox.log` for FPP API error messages
 - Make sure FPP's Scheduler has started the idle playlist for your show hours
 
 ---
@@ -793,7 +793,7 @@ sudo journalctl -u sled-mailbox --no-pager -n 50
 - Check that BCM pin 17 (or your configured pin) is not claimed by another FPP service
 - Try `SLED - Trigger Letter` from FPP Commands to verify video playback works independently of the sensor
 - Make sure `cooldown_s` isn't set too high — you may be triggering during cooldown
-- Check log: `tail -f /home/fpp/media/logs/SledMailbox.log`
+- Check log: `tail -f /home/fpp/media/logs/plugin-fpp-sled-mailbox.log`
 
 ---
 
@@ -840,13 +840,13 @@ sudo journalctl -u sled-mailbox --no-pager -n 50
 
 ```bash
 # Follow the SLED log in real time
-tail -f /home/fpp/media/logs/SledMailbox.log
+tail -f /home/fpp/media/logs/plugin-fpp-sled-mailbox.log
 
 # Search for errors
-grep -i error /home/fpp/media/logs/SledMailbox.log
+grep -i error /home/fpp/media/logs/plugin-fpp-sled-mailbox.log
 
 # View the last 100 lines
-tail -n 100 /home/fpp/media/logs/SledMailbox.log
+tail -n 100 /home/fpp/media/logs/plugin-fpp-sled-mailbox.log
 ```
 
 ---
@@ -857,7 +857,7 @@ tail -n 100 /home/fpp/media/logs/SledMailbox.log
 |---|---|
 | `/home/fpp/media/config/sled.json` | Main configuration file |
 | `/home/fpp/media/config/sled.db` | SQLite analytics database |
-| `/home/fpp/media/logs/SledMailbox.log` | Daemon log file |
+| `/home/fpp/media/logs/plugin-fpp-sled-mailbox.log` | Daemon log file |
 | `/home/fpp/media/playlists/sled_event.json` | Auto-generated event playlist (managed by SLED) |
 | `/etc/systemd/system/sled-mailbox.service` | Systemd service unit |
 | `/home/fpp/media/config/gpio.json` | FPP GPIO reservation (SLED auto-updates this) |

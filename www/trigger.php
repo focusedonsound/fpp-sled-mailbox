@@ -134,11 +134,10 @@ switch ($action) {
     }
     $svcState = trim(shell_exec('systemctl is-active sled-mailbox 2>/dev/null') ?: "unknown");
     $whoami   = trim(shell_exec('whoami') ?: "");
-    $installLog = file_exists('/tmp/SledMailbox_install.log')
-        ? file_get_contents('/tmp/SledMailbox_install.log')
-        : (file_exists('/home/fpp/media/logs/SledMailbox_install.log')
-            ? file_get_contents('/home/fpp/media/logs/SledMailbox_install.log')
-            : "install log not found");
+    // Install and daemon logging both go to the same FPP-conformant file.
+    $installLog = file_exists('/home/fpp/media/logs/plugin-fpp-sled-mailbox.log')
+        ? file_get_contents('/home/fpp/media/logs/plugin-fpp-sled-mailbox.log')
+        : "install log not found";
     echo json_encode([
       "user"        => $whoami,
       "pyserial"    => $pyserial ?: "NOT FOUND",
@@ -198,7 +197,7 @@ switch ($action) {
   // ── Daemon log tail (for in-UI diagnostics) ──────────────────────────────
   case 'logtail': {
     header('Content-Type: application/json; charset=utf-8');
-    $logFile = "/home/fpp/media/logs/SledMailbox.log";
+    $logFile = "/home/fpp/media/logs/plugin-fpp-sled-mailbox.log";
     $lines   = max(1, min(200, (int)($_GET['lines'] ?? 60)));
     if (!file_exists($logFile)) {
       echo json_encode(["ok" => false, "lines" => [], "note" => "Log file not found — daemon has not written any output yet."]);

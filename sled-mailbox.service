@@ -21,8 +21,8 @@ Restart=on-failure
 RestartSec=15
 StartLimitBurst=4
 StartLimitIntervalSec=300
-StandardOutput=append:/home/fpp/media/logs/SledMailbox.log
-StandardError=append:/home/fpp/media/logs/SledMailbox.log
+StandardOutput=append:/home/fpp/media/logs/plugin-fpp-sled-mailbox.log
+StandardError=append:/home/fpp/media/logs/plugin-fpp-sled-mailbox.log
 
 [Install]
 WantedBy=multi-user.target

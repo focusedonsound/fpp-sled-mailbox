@@ -4,14 +4,20 @@
 
 PLUGIN_DIR="$(dirname "$0")"
 
-# Log to /tmp first (always writable), then also try the media logs dir
-LOGFILE="/tmp/SledMailbox_install.log"
-MEDIA_LOG="/home/fpp/media/logs/SledMailbox_install.log"
+# Resolve FPP's logs directory the documented way (supports a relocated
+# media directory) rather than hard-coding /home/fpp/media/logs, and use
+# the single FPP-conformant log file (plugin-<repoName>.log) for both this
+# install script and the daemon, per the plugin guidelines' logging rules.
+: "${FPPDIR:=/opt/fpp}"
+. "${FPPDIR}/scripts/common" 2>/dev/null || true
+LOGDIR="$(getSetting logDirectory 2>/dev/null)"
+LOGDIR="${LOGDIR:-/home/fpp/media/logs}"
+LOGFILE="${LOGDIR}/plugin-fpp-sled-mailbox.log"
 
 log() {
     local msg="[$(date '+%Y-%m-%d %H:%M:%S')] $*"
-    echo "$msg" | tee -a "$LOGFILE"
-    echo "$msg" >> "$MEDIA_LOG" 2>/dev/null || true
+    mkdir -p "$LOGDIR" 2>/dev/null || true
+    echo "$msg" >> "$LOGFILE" 2>/dev/null || echo "$msg"
 }
 
 log "=== SLED Santa Mailbox install started (user=$(whoami), uid=$(id -u)) ==="
@@ -81,12 +87,8 @@ log "=== SLED Santa Mailbox install started (user=$(whoami), uid=$(id -u)) ==="
 )
 
 # ── Create media directories ─────────────────────────────────────
-# Do this FIRST so the media log path is available.
-mkdir -p /home/fpp/media/logs
+# (log() already mkdir -p's $LOGDIR on every call)
 mkdir -p /home/fpp/media/config
-
-# Now that the dir exists, copy /tmp log into media log
-cat "$LOGFILE" >> "$MEDIA_LOG" 2>/dev/null || true
 
 # pluginInfo.json's dependencies.packages block already declares
 # python3-serial, python3-paho-mqtt, and python3-gpiozero, so FPP 10+

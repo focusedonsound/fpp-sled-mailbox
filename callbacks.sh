@@ -8,7 +8,7 @@
 PLUGIN_DIR="$(dirname "$0")"
 DAEMON="${PLUGIN_DIR}/scripts/sled_daemon.py"
 PID_FILE="/home/fpp/media/logs/sled_daemon.pid"
-LOG_FILE="/home/fpp/media/logs/SledMailbox.log"
+LOG_FILE="/home/fpp/media/logs/plugin-fpp-sled-mailbox.log"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [callbacks] $*" >> "$LOG_FILE"; }
 
@@ -127,6 +127,8 @@ case "${1:-}" in
     getLinks)
         # Register this plugin in FPP's Content Setup navigation menu.
         # FPP calls this callback to discover plugin navigation entries.
+        # MQTT/HA settings (www/mqtt.php) are reached via a button on the main
+        # dashboard, not a second 'content' entry here -- see menu.inc.
         cat <<'JSON'
 [
   {
@@ -134,12 +136,6 @@ case "${1:-}" in
     "text": "SLED Smart Letters",
     "url":  "/plugin.php?plugin=fpp-sled-mailbox&page=www/index.php",
     "icon": "fas fa-fw fa-envelope-open-text"
-  },
-  {
-    "menu": "content",
-    "text": "SLED MQTT / Home Assistant",
-    "url":  "/plugin.php?plugin=fpp-sled-mailbox&page=www/mqtt.php",
-    "icon": "fas fa-fw fa-tower-broadcast"
   }
 ]
 JSON
