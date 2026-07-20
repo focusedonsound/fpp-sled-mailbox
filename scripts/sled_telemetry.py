@@ -7,7 +7,8 @@ Sends a lightweight ping to the SLED telemetry backend once on startup
 Completely non-blocking — all errors are silently swallowed so telemetry
 can never affect normal plugin operation.
 
-Opt-in is controlled by cfg["telemetry"]["opt_in"]  (default: True).
+Opt-in is controlled by cfg["telemetry"]["opt_in"]  (default: False -- off
+until the user actively turns it on).
 install_id is a stable UUID stored in sled.json under cfg["telemetry"]["install_id"].
 """
 from __future__ import annotations
@@ -119,7 +120,7 @@ class SledTelemetry:
     # ── Internals ──────────────────────────────────────────────────────────
 
     def _is_opt_in(self) -> bool:
-        return bool(self._cfg.get("telemetry", {}).get("opt_in", True))
+        return bool(self._cfg.get("telemetry", {}).get("opt_in", False))
 
     def _install_id(self) -> str:
         return str(self._cfg.get("telemetry", {}).get("install_id", "")).strip()

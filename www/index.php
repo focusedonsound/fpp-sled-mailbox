@@ -36,7 +36,7 @@ function defaultCfg() {
       "direction_window_s" => 10.0,
     ],
     "mqtt"      => ["enabled" => false, "base" => "sled", "device_name" => "SLED Santa Mailbox"],
-    "telemetry" => ["opt_in" => true, "install_id" => ""],
+    "telemetry" => ["opt_in" => false, "install_id" => ""],
   ];
 }
 

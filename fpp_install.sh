@@ -174,7 +174,7 @@ if [[ ! -f "$CONFIG" ]]; then
     "device_name": "SLED Santa Mailbox"
   },
   "telemetry": {
-    "opt_in": true,
+    "opt_in": false,
     "install_id": ""
   }
 }
