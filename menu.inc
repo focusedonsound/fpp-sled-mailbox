@@ -15,14 +15,12 @@ $menuEntries = Array(
 		'type' => 'status',
 		'page' => 'www/status.php',
 		'wrap' => 1
-	),
-	Array(
-		'text' => 'SLED MQTT',
-		'type' => 'content',
-		'page' => 'www/mqtt.php',
-		'wrap' => 1
 	)
 );
+# MQTT & Home Assistant settings (www/mqtt.php) are reachable via a button
+# on the main dashboard (www/index.php) rather than their own menu entry --
+# this plugin already has one 'content' entry (SLED Smart Letters above),
+# and each menu area should have at most one.
 
 foreach ($menuEntries as $entry)
 {

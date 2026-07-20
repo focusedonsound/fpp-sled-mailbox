@@ -214,6 +214,10 @@ $pluginVersion = pluginVersion();
     </span>
   </div>
   <div class="d-flex align-items-center gap-2 sled-donate-row">
+    <a href="plugin.php?plugin=<?php echo urlencode($pluginName); ?>&page=www/mqtt.php"
+       class="sled-btn">
+      <i class="fas fa-fw fa-tower-broadcast"></i> MQTT &amp; Home Assistant
+    </a>
     <a href="https://buymeacoffee.com/jm9pwtesct" target="_blank" rel="noopener noreferrer"
        class="sled-btn">
       <i class="fas fa-fw fa-mug-hot"></i> Buy Me a Coffee
