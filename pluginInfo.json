@@ -6,6 +6,7 @@
   "homeURL": "https://github.com/focusedonsound/fpp-sled-mailbox",
   "srcURL": "https://github.com/focusedonsound/fpp-sled-mailbox.git",
   "bugURL": "https://github.com/focusedonsound/fpp-sled-mailbox/issues",
+  "iconURL": "https://raw.githubusercontent.com/focusedonsound/fpp-sled-mailbox/main/icon.png",
   "allowUpdates": 1,
   "versions": [
     {
