@@ -16,7 +16,7 @@
 
 ini_set('display_errors', '0');
 
-$DB_PATH  = "/home/fpp/media/logs/sled.db";
+$DB_PATH  = "/home/fpp/media/plugins/fpp-sled-mailbox/state/sled.db";
 $CFG_PATH = "/home/fpp/media/config/sled.json";
 
 // ── Schema (mirrors sled_db.py — safe to run if DB already exists) ────────────

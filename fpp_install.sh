@@ -89,6 +89,7 @@ log "=== SLED Santa Mailbox install started (user=$(whoami), uid=$(id -u)) ==="
 # ── Create media directories ─────────────────────────────────────
 # (log() already mkdir -p's $LOGDIR on every call)
 mkdir -p /home/fpp/media/config
+mkdir -p /home/fpp/media/plugins/fpp-sled-mailbox/state
 
 # pluginInfo.json's dependencies.packages block already declares
 # python3-serial, python3-paho-mqtt, and python3-gpiozero, so FPP 10+
@@ -174,10 +175,6 @@ if [[ ! -f "$CONFIG" ]]; then
     "enabled": false,
     "base": "sled",
     "device_name": "SLED Santa Mailbox"
-  },
-  "telemetry": {
-    "opt_in": false,
-    "install_id": ""
   }
 }
 JSONEOF

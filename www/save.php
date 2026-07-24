@@ -98,12 +98,6 @@ if (isset($_POST['_sled_form_v2'])) {
 }
 // else: preserve whatever is already in the config (defaults to true via callbacks.sh)
 
-// ── Telemetry ─────────────────────────────────────────────────────────────
-// Preserve existing install_id or generate one on first save
-$existingId = $cfg["telemetry"]["install_id"] ?? "";
-$cfg["telemetry"]["install_id"] = ($existingId !== "") ? $existingId : generateUUID();
-$cfg["telemetry"]["opt_in"]     = pBool("telemetry_opt_in");
-
 // ── Atomic write ──────────────────────────────────────────────────────────
 $tmp  = $configFile . ".tmp";
 $data = json_encode($cfg, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n";

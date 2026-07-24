@@ -676,14 +676,15 @@ class GPIOInputs:
         # ── LD2410 radar readers ───────────────────────────────────────────
         ld_cfg = cfg.get("ld2410", {}) or {}
         if ld_cfg.get("enabled", False):
-            log_dir = "/home/fpp/media/logs"
+            state_dir = "/home/fpp/media/plugins/fpp-sled-mailbox/state"
+            os.makedirs(state_dir, exist_ok=True)
             for side, event_code in (("A", "a"), ("B", "b")):
                 side_cfg = ld_cfg.get(side, {}) or {}
                 port = side_cfg.get("port", "")
                 if not port:
                     continue
                 min_e      = int(side_cfg.get("min_energy", 20))
-                diag_path  = os.path.join(log_dir, f"sled_radar_{side.lower()}.json")
+                diag_path  = os.path.join(state_dir, f"sled_radar_{side.lower()}.json")
                 reader = Ld2410UsbReader(
                     port             = port,
                     name             = side,

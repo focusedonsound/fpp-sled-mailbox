@@ -11,9 +11,9 @@ ini_set('display_errors', '0');
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 
-$DB_PATH  = "/home/fpp/media/logs/sled.db";
+$DB_PATH  = "/home/fpp/media/plugins/fpp-sled-mailbox/state/sled.db";
 $CFG_PATH = "/home/fpp/media/config/sled.json";
-$PID_FILE = "/home/fpp/media/logs/sled_daemon.pid";
+$PID_FILE = "/home/fpp/media/plugins/fpp-sled-mailbox/state/sled_daemon.pid";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

@@ -7,7 +7,7 @@
 
 PLUGIN_DIR="$(dirname "$0")"
 DAEMON="${PLUGIN_DIR}/scripts/sled_daemon.py"
-PID_FILE="/home/fpp/media/logs/sled_daemon.pid"
+PID_FILE="/home/fpp/media/plugins/fpp-sled-mailbox/state/sled_daemon.pid"
 LOG_FILE="/home/fpp/media/logs/plugin-fpp-sled-mailbox.log"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [callbacks] $*" >> "$LOG_FILE"; }
@@ -23,6 +23,7 @@ daemon_start() {
     done
     # Ensure the logs dir exists even on first boot
     mkdir -p "/home/fpp/media/logs" 2>/dev/null || true
+    mkdir -p "$(dirname "$PID_FILE")" 2>/dev/null || true
 
     # Read enabled flag from config
     ENABLED=$(python3 -c "

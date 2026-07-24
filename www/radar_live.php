@@ -32,7 +32,7 @@ if (!in_array($side, ['a', 'b'], true)) {
     exit;
 }
 
-$path = "/home/fpp/media/logs/sled_radar_{$side}.json";
+$path = "/home/fpp/media/plugins/fpp-sled-mailbox/state/sled_radar_{$side}.json";
 
 if (!file_exists($path)) {
     echo json_encode([

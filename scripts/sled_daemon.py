@@ -5,7 +5,7 @@
 # Architecture: this daemon handles only what FPP cannot do natively:
 #   • LD2410 radar serial I/O and car-detection state machine
 #   • GPIO letter / donation sensors
-#   • MQTT telemetry (Home Assistant discovery)
+#   • MQTT (Home Assistant discovery)
 #   • SQLite event/counter persistence
 #
 # Video playback is delegated entirely to FPP via its local REST API.
@@ -36,7 +36,6 @@ if os.path.isdir(_VENDOR_DIR):
 from ha import HAMqtt
 from sensors import MockInputs, GPIOInputs
 from sled_db import SledDB
-from sled_telemetry import SledTelemetry
 
 # Optional DHT11 support
 try:
@@ -53,8 +52,9 @@ CONFIG_FILE    = "/home/fpp/media/config/sled.json"
 _LOGDIR        = os.environ.get("LOGDIR", "/home/fpp/media/logs")
 # Same file the install script logs to -- one FPP-conformant log per plugin.
 LOG_FILE       = os.path.join(_LOGDIR, "plugin-fpp-sled-mailbox.log")
-CMD_QUEUE_FILE = "/home/fpp/media/logs/sled_trigger.cmd"
-PID_FILE       = "/home/fpp/media/logs/sled_daemon.pid"
+_STATE_DIR     = "/home/fpp/media/plugins/fpp-sled-mailbox/state"
+CMD_QUEUE_FILE = os.path.join(_STATE_DIR, "sled_trigger.cmd")
+PID_FILE       = os.path.join(_STATE_DIR, "sled_daemon.pid")
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 # Ensure the log directory exists BEFORE opening the FileHandler.
@@ -63,6 +63,7 @@ PID_FILE       = "/home/fpp/media/logs/sled_daemon.pid"
 _LOG_DIR = os.path.dirname(LOG_FILE)
 try:
     os.makedirs(_LOG_DIR, exist_ok=True)
+    os.makedirs(_STATE_DIR, exist_ok=True)
 except OSError:
     pass  # best effort; FileHandler fallback below handles the error case
 
@@ -486,9 +487,6 @@ def main() -> None:
     ha  = HAMqtt(cfg)
     db  = SledDB()
 
-    telemetry = SledTelemetry(cfg, db)
-    telemetry.start()
-
     start_dht_thread(cfg, ha)
 
     # Restore persisted counters to MQTT
@@ -839,7 +837,6 @@ def main() -> None:
 
     finally:
         log.info("SLED daemon shutting down...")
-        telemetry.stop()
         fpp.stop()
         ha.close()
         db.close()

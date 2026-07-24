@@ -15,7 +15,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     respond(false, 'POST required');
 }
 
-$DB_PATH = "/home/fpp/media/logs/sled.db";
+$DB_PATH = "/home/fpp/media/plugins/fpp-sled-mailbox/state/sled.db";
 $action  = trim($_POST['action'] ?? '');
 
 if (!file_exists($DB_PATH)) respond(false, 'Database not found — has the daemon run yet?');

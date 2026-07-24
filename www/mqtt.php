@@ -7,8 +7,8 @@
 ini_set('display_errors', '0');
 
 $CFG_PATH = "/home/fpp/media/config/sled.json";
-$CMD_FILE = "/home/fpp/media/logs/sled_trigger.cmd";
-$PID_FILE = "/home/fpp/media/logs/sled_daemon.pid";
+$CMD_FILE = "/home/fpp/media/plugins/fpp-sled-mailbox/state/sled_trigger.cmd";
+$PID_FILE = "/home/fpp/media/plugins/fpp-sled-mailbox/state/sled_daemon.pid";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

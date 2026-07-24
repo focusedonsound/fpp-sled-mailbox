@@ -4,7 +4,7 @@
 ini_set('display_errors', '0');
 
 $CFG_PATH = "/home/fpp/media/config/sled.json";
-$PID_FILE = "/home/fpp/media/logs/sled_daemon.pid";
+$PID_FILE = "/home/fpp/media/plugins/fpp-sled-mailbox/state/sled_daemon.pid";
 
 function sled_daemon_running($pf) {
     if (!file_exists($pf)) return false;

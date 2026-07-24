@@ -8,12 +8,15 @@ Tracks:
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-DB_PATH = "/home/fpp/media/logs/sled.db"
+_STATE_DIR = "/home/fpp/media/plugins/fpp-sled-mailbox/state"
+os.makedirs(_STATE_DIR, exist_ok=True)
+DB_PATH = os.path.join(_STATE_DIR, "sled.db")
 
 # ---------------------------------------------------------------------------
 # Schema

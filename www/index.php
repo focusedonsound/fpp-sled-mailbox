@@ -36,7 +36,6 @@ function defaultCfg() {
       "direction_window_s" => 10.0,
     ],
     "mqtt"      => ["enabled" => false, "base" => "sled", "device_name" => "SLED Santa Mailbox"],
-    "telemetry" => ["opt_in" => false, "install_id" => ""],
   ];
 }
 
@@ -60,7 +59,7 @@ function loadConfig($path) {
 
 // ── Daemon status (graceful — posix may not be available) ─────────────────
 function daemonRunning() {
-  $pidFile = "/home/fpp/media/logs/sled_daemon.pid";
+  $pidFile = "/home/fpp/media/plugins/fpp-sled-mailbox/state/sled_daemon.pid";
   if (!file_exists($pidFile)) return false;
   $pid = trim(@file_get_contents($pidFile));
   if (!$pid || !is_numeric($pid)) return false;
@@ -218,13 +217,9 @@ $pluginVersion = pluginVersion();
        class="sled-btn">
       <i class="fas fa-fw fa-tower-broadcast"></i> MQTT &amp; Home Assistant
     </a>
-    <a href="https://buymeacoffee.com/jm9pwtesct" target="_blank" rel="noopener noreferrer"
+    <a href="https://github.com/focusedonsound/fpp-sled-mailbox" target="_blank" rel="noopener noreferrer"
        class="sled-btn">
-      <i class="fas fa-fw fa-mug-hot"></i> Buy Me a Coffee
-    </a>
-    <a href="https://paypal.me/NScilingo" target="_blank" rel="noopener noreferrer"
-       class="sled-btn">
-      <i class="fas fa-fw fa-hand-holding-dollar"></i> Donate via PayPal
+      <i class="fas fa-fw fa-code-branch"></i> GitHub Repo
     </a>
   </div>
 </div>
@@ -970,7 +965,7 @@ $pluginVersion = pluginVersion();
     </div>
   </div>
 
-  <!-- ── Footer: Non-commercial notice + telemetry opt-in ────────── -->
+  <!-- ── Footer: About this plugin ───────────────────────────────── -->
   <div class="fppTableWrapper fppTableWrapperAsTable mb-3">
     <div class="fppTableContents">
       <table class="fppSelectableRowTable" style="width:100%;">
@@ -984,28 +979,11 @@ $pluginVersion = pluginVersion();
         <tbody>
           <tr>
             <td style="padding:12px 16px;">
-              <p class="mb-3">
-                SLED and Announcement Assistant are free for personal use.
-                If you&rsquo;re using either plugin in a paid display, sponsored event, or
-                professional environment &mdash; please consider
-                <a href="https://paypal.me/NScilingo" target="_blank" rel="noopener noreferrer">
-                  making a donation</a>.
-                It helps keep development going.
+              <p class="mb-0">
+                SLED and Announcement Assistant are free and open source. See the
+                <a href="https://github.com/focusedonsound/fpp-sled-mailbox" target="_blank" rel="noopener noreferrer">
+                  GitHub repo</a> for documentation, updates, and ways to support development.
               </p>
-              <div class="d-flex align-items-center gap-2">
-                <label class="form-check-label small mb-0" for="telemetryOptIn" style="cursor:pointer;">
-                  Help improve this plugin by sharing anonymous usage stats
-                  <span style="cursor:help; color:var(--bs-info);"
-                        title="Sends once per day: plugin version, FPP version, Pi model, which features are enabled (on/off only), and lifetime event counts. No personal data is collected and no IP addresses are stored. This information is used to understand how the plugin is being used and to prioritize development.">
-                    <i class="fas fa-circle-question fa-xs"></i>
-                  </span>
-                </label>
-                <div class="form-check form-switch mb-0">
-                  <input class="form-check-input" type="checkbox" name="telemetry_opt_in"
-                         id="telemetryOptIn" value="1"
-                         <?php echo !empty($cfg['telemetry']['opt_in']) ? 'checked' : ''; ?> />
-                </div>
-              </div>
             </td>
           </tr>
         </tbody>

@@ -10,8 +10,8 @@ function respond($ok, $msg) {
 }
 
 $action   = trim((string)($_GET['action'] ?? ''));
-$cmdQueue = "/home/fpp/media/logs/sled_trigger.cmd";
-$pidFile  = "/home/fpp/media/logs/sled_daemon.pid";
+$cmdQueue = "/home/fpp/media/plugins/fpp-sled-mailbox/state/sled_trigger.cmd";
+$pidFile  = "/home/fpp/media/plugins/fpp-sled-mailbox/state/sled_daemon.pid";
 
 $pluginDir = realpath(dirname(__FILE__) . "/../");
 $callbacks = $pluginDir ? $pluginDir . "/callbacks.sh" : null;
@@ -46,7 +46,7 @@ switch ($action) {
     // Kill ALL existing daemon instances and wait for them to exit.
     // SIGTERM first (graceful), then SIGKILL if still alive after 3s.
     @exec("pkill -TERM -f sled_daemon.py 2>/dev/null");
-    $pidFile = "/home/fpp/media/logs/sled_daemon.pid";
+    $pidFile = "/home/fpp/media/plugins/fpp-sled-mailbox/state/sled_daemon.pid";
     @unlink($pidFile);  // Remove PID file so callbacks.sh starts fresh
     $waited = 0;
     while (trim(shell_exec("pgrep -f sled_daemon.py 2>/dev/null") ?: "") !== "" && $waited < 40) {
@@ -126,7 +126,7 @@ switch ($action) {
     $paho     = trim(shell_exec("python3 -c \"import sys; sys.path.insert(0,$vendorArg); import paho; print(paho.__version__)\" 2>&1") ?: "");
     $usbDevs  = trim(shell_exec('ls /dev/ttyUSB* 2>/dev/null') ?: "none");
     // Daemon status: check PID file rather than pgrep (pgrep gave false positives)
-    $pidFile   = "/home/fpp/media/logs/sled_daemon.pid";
+    $pidFile   = "/home/fpp/media/plugins/fpp-sled-mailbox/state/sled_daemon.pid";
     $daemonPid = "not running";
     if (file_exists($pidFile)) {
       $pid = trim(@file_get_contents($pidFile));
@@ -157,7 +157,7 @@ switch ($action) {
     $vendorArg = $vendorDir ? escapeshellarg($vendorDir) : "''";
     $hasSerial  = (trim(shell_exec("python3 -c \"import sys; sys.path.insert(0,$vendorArg); import serial\" 2>&1") ?: "") === "");
     // Daemon status: check PID file rather than pgrep (pgrep gave false positives)
-    $pidFile   = "/home/fpp/media/logs/sled_daemon.pid";
+    $pidFile   = "/home/fpp/media/plugins/fpp-sled-mailbox/state/sled_daemon.pid";
     $hasDaemon = false;
     if (file_exists($pidFile)) {
       $pid = trim(@file_get_contents($pidFile));
@@ -229,12 +229,12 @@ switch ($action) {
         $waited++;
     }
     @exec("pkill -KILL -f sled_daemon.py 2>/dev/null");
-    @unlink("/home/fpp/media/logs/sled_daemon.pid");
+    @unlink("/home/fpp/media/plugins/fpp-sled-mailbox/state/sled_daemon.pid");
     respond(true, "Daemon stopped.");
 
   // ── Daemon start (without full restart) ──────────────────────────────────
   case 'daemon_start':
-    $spidFile = "/home/fpp/media/logs/sled_daemon.pid";
+    $spidFile = "/home/fpp/media/plugins/fpp-sled-mailbox/state/sled_daemon.pid";
     if (file_exists($spidFile)) {
         $spid = trim(@file_get_contents($spidFile));
         if ($spid && is_numeric($spid) && is_dir("/proc/$spid"))
