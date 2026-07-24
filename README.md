@@ -48,6 +48,17 @@
 
 ---
 
+## 📄 License
+
+Free for personal, hobbyist, and noncommercial use under the
+[PolyForm Noncommercial License 1.0.0](LICENSE).
+
+Using this in a commercial or paid-event display? A separate commercial
+license is required — contact license.request@christmasinboontontwp.com
+to arrange one.
+
+---
+
 ## 🎁 What Is SLED?
 
 **SLED** (Smart Letters Express Delivery) is a Falcon Player plugin that turns a Santa Mailbox Christmas prop into a **fully interactive, sensor-driven audience experience**. It's not just a box — it's an event.
@@ -921,17 +932,6 @@ Found a bug? Have a feature idea? Want to share your build?
 - Open an issue: [github.com/focusedonsound/fpp-sled-mailbox/issues](https://github.com/focusedonsound/fpp-sled-mailbox/issues)
 - Submit a PR: Fork, branch, PR against `main`
 - Share your build photos in the FPP community forums!
-
----
-
-## 📄 License
-
-Free for personal, hobbyist, and noncommercial use under the
-[PolyForm Noncommercial License 1.0.0](LICENSE).
-
-Using this in a commercial or paid-event display? A separate commercial
-license is required — contact license.request@christmasinboontontwp.com
-to arrange one.
 
 ---
 
