@@ -624,6 +624,42 @@ class Ld2410UsbReader(threading.Thread):
 
 
 # =============================================================================
+# Reserved GPIO pin table
+# =============================================================================
+
+# BCM pins that are typically owned by kernel drivers when the corresponding
+# interface is enabled in /boot/config.txt (or /boot/firmware/config.txt).
+# If the driver owns the pin first, both gpiozero and RPi.GPIO fail with
+# "GPIO busy" / EINVAL — and the failure is silent (sensors disabled, no
+# actionable error).  Warn loudly here so the log makes the problem obvious.
+_RESERVED_GPIO: dict = {
+    2:  "I2C1 SDA  — owned by i2c_bcm2835 when dtparam=i2c_arm=on",
+    3:  "I2C1 SCL  — owned by i2c_bcm2835 when dtparam=i2c_arm=on",
+    7:  "SPI0 CE1  — owned by spi_bcm2835 when dtparam=spi=on",
+    8:  "SPI0 CE0  — owned by spi_bcm2835 when dtparam=spi=on",
+    9:  "SPI0 MISO — owned by spi_bcm2835 when dtparam=spi=on",
+    10: "SPI0 MOSI — owned by spi_bcm2835 when dtparam=spi=on",
+    11: "SPI0 SCLK — owned by spi_bcm2835 when dtparam=spi=on",
+    14: "UART0 TX  — owned by uart0/pl011 when enable_uart=1",
+    15: "UART0 RX  — owned by uart0/pl011 when enable_uart=1",
+}
+
+
+def _warn_reserved_pins(pins_to_init: list) -> None:
+    """Log a clear warning for any BCM pin in the hardware-reserved list."""
+    for pin, _code, label in pins_to_init:
+        if pin in _RESERVED_GPIO:
+            print(
+                f"[GPIOInputs] WARNING: {label} is configured on GPIO{pin}, "
+                f"which is a reserved hardware pin ({_RESERVED_GPIO[pin]}). "
+                f"If that interface is active in /boot/config.txt the kernel "
+                f"driver already owns the pin and GPIO init will fail with "
+                f"'GPIO busy'. Choose a different BCM pin.",
+                flush=True,
+            )
+
+
+# =============================================================================
 # Real GPIO + LD2410 inputs
 # =============================================================================
 
@@ -661,6 +697,10 @@ class GPIOInputs:
             pins_to_init.extend(special_pins)
 
         # ── GPIO sensors ──────────────────────────────────────────────────
+        # Warn early about reserved hardware pins so the log is actionable
+        # before any GPIO library throws an opaque "GPIO busy" error.
+        _warn_reserved_pins(pins_to_init)
+
         # Try gpiozero+RPiGPIOFactory first (original implementation).
         # Fall back to raw RPi.GPIO if gpiozero is not installed.
         self._gpio_pins: list  = []    # BCM pins registered via RPi.GPIO (for cleanup)

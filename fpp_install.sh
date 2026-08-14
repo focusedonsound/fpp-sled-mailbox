@@ -204,5 +204,37 @@ else
     log "WARN: sled-mailbox.service not found in plugin dir — skipping systemd install"
 fi
 
+# ── Sudoers rule for fpp user ────────────────────────────────────
+# FPP runs as root but its web UI (PHP) and plugin callbacks run as the
+# 'fpp' user.  Without this rule, 'systemctl start/stop sled-mailbox'
+# from callbacks.sh or fpp_stop.sh returns:
+#   "Failed to start sled-mailbox.service: Interactive authentication required"
+# and silently falls back to a bare nohup launch (no auto-restart on crash).
+# This rule grants the fpp user passwordless control of this one service only.
+SUDOERS_FILE="/etc/sudoers.d/sled-mailbox"
+cat > "${SUDOERS_FILE}.tmp" << 'SUDOEOF'
+# SLED Santa Mailbox — allow fpp user to control its own daemon service
+# without a password prompt.  Scope is intentionally limited to this service.
+fpp ALL=(ALL) NOPASSWD: \
+    /bin/systemctl start sled-mailbox, \
+    /bin/systemctl stop sled-mailbox, \
+    /bin/systemctl restart sled-mailbox, \
+    /bin/systemctl is-active sled-mailbox, \
+    /bin/systemctl is-enabled sled-mailbox, \
+    /usr/bin/systemctl start sled-mailbox, \
+    /usr/bin/systemctl stop sled-mailbox, \
+    /usr/bin/systemctl restart sled-mailbox, \
+    /usr/bin/systemctl is-active sled-mailbox, \
+    /usr/bin/systemctl is-enabled sled-mailbox
+SUDOEOF
+chmod 0440 "${SUDOERS_FILE}.tmp"
+if visudo -cf "${SUDOERS_FILE}.tmp" >> "$LOGFILE" 2>&1; then
+    mv "${SUDOERS_FILE}.tmp" "$SUDOERS_FILE"
+    log "Sudoers rule installed: $SUDOERS_FILE"
+else
+    rm -f "${SUDOERS_FILE}.tmp"
+    log "WARN: sudoers rule validation failed — rule not installed (daemon control may require manual start)"
+fi
+
 log "=== SLED Santa Mailbox install complete ==="
 exit 0

@@ -144,15 +144,52 @@ class HAMqtt:
         self.cli.on_disconnect = self._on_disconnect
 
         _LOGGER.info("Connecting to MQTT broker %s:%s", self.host, self.port)
+        # Resolve the hostname before attempting connect so we can give a
+        # clear, actionable error instead of a raw errno message.
+        try:
+            socket.getaddrinfo(self.host, self.port)
+        except socket.gaierror as exc:
+            _LOGGER.warning(
+                "MQTT disabled: cannot resolve broker hostname %r — "
+                "check that the hostname/IP in FPP MQTT settings is correct "
+                "and that DNS is working. (Detail: %s)",
+                self.host, exc,
+            )
+            self._enabled = False
+            return
         try:
             self.cli.connect(self.host, self.port, keepalive=60)
             self.cli.loop_start()
+        except ConnectionRefusedError:
+            _LOGGER.warning(
+                "MQTT initial connect refused by %s:%s — broker may be down "
+                "or listening on a different port. paho will retry automatically.",
+                self.host, self.port,
+            )
+        except OSError as exc:
+            _LOGGER.warning(
+                "MQTT initial connect failed (network error) to %s:%s — %s. "
+                "paho will retry automatically.",
+                self.host, self.port, exc,
+            )
         except Exception as exc:
-            _LOGGER.warning("MQTT initial connect failed: %s", exc)
+            _LOGGER.warning(
+                "MQTT initial connect failed to %s:%s — %s",
+                self.host, self.port, exc,
+            )
 
     # ------------------------------------------------------------------
     # Internal callbacks
     # ------------------------------------------------------------------
+
+    # paho rc codes → human-readable reason
+    _MQTT_RC = {
+        1: "protocol version refused",
+        2: "client ID rejected",
+        3: "broker unavailable",
+        4: "bad username or password (check FPP MQTT credentials)",
+        5: "not authorised",
+    }
 
     def _on_connect(self, client, userdata, flags, rc: int) -> None:
         if rc == 0:
@@ -161,7 +198,11 @@ class HAMqtt:
             self.pub(f"{self.base}/status", "online", retain=True)
             self._send_discovery()
         else:
-            _LOGGER.warning("MQTT connect failed rc=%s", rc)
+            reason = self._MQTT_RC.get(rc, f"unknown rc={rc}")
+            _LOGGER.warning(
+                "MQTT connect rejected by %s:%s — %s",
+                self.host, self.port, reason,
+            )
 
     def _on_disconnect(self, client, userdata, rc: int) -> None:
         self.connected = False

@@ -45,13 +45,19 @@ except: print('true')
     # nohup we end up with two instances competing for the serial ports.
     # Delegate to systemctl when the service is enabled; fall back to nohup
     # only when systemd is not managing the service (e.g. older install).
-    if systemctl is-enabled --quiet sled-mailbox 2>/dev/null; then
-        if systemctl is-active --quiet sled-mailbox 2>/dev/null; then
+    #
+    # Use 'sudo systemctl' so this works when called as the fpp user (e.g. from
+    # the web UI).  fpp_install.sh writes /etc/sudoers.d/sled-mailbox granting
+    # passwordless sudo for these specific systemctl commands.  When running as
+    # root (FPP boot hook), sudo is a no-op.
+    _SYSTEMCTL="sudo systemctl"
+    if $_SYSTEMCTL is-enabled --quiet sled-mailbox 2>/dev/null; then
+        if $_SYSTEMCTL is-active --quiet sled-mailbox 2>/dev/null; then
             log "Daemon already running via systemd (skipping nohup start)"
             return 0
         fi
         log "Starting daemon via systemctl..."
-        if systemctl start sled-mailbox >> "$LOG_FILE" 2>&1; then
+        if $_SYSTEMCTL start sled-mailbox >> "$LOG_FILE" 2>&1; then
             log "Daemon started via systemctl"
             return 0
         fi

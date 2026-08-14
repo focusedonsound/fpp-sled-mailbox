@@ -221,27 +221,35 @@ class FPPPlayer:
         Start a playlist and block until it finishes (or timeout/shutdown).
         Polls FPP status every 0.5 s.  After the playlist ends (or on timeout)
         control returns to the caller, which decides whether to restart idle.
+
+        FPP 9.x bug: current_playlist.playlist drops to "" after ~5 s of
+        media-level playback, so current_playlist() is unreliable for detecting
+        completion.  Use status_name == "idle" instead, matching play_file().
         """
         if not name:
             return
         self.start_playlist(name)
 
-        # Wait up to 2 s for FPP to actually begin the playlist
+        # Wait up to 3 s for FPP to begin playing
         t0 = time.time()
-        while time.time() - t0 < 2.0 and not _shutdown.is_set():
-            if self.current_playlist() == name:
+        while time.time() - t0 < 3.0 and not _shutdown.is_set():
+            raw = self._status()
+            if raw and raw.get("status_name") == "playing":
                 break
             time.sleep(0.2)
 
-        # Now wait for it to finish
+        # Wait for status to return to idle (playlist finished)
         deadline = time.time() + timeout_s
         while time.time() < deadline and not _shutdown.is_set():
-            if self.current_playlist() != name:
-                return          # playlist ended normally
+            raw   = self._status()
+            sname = (raw or {}).get("status_name", "idle")
+            if sname == "idle":
+                log.info("[FPP] play_once finished: %s", name)
+                return
             time.sleep(0.5)
 
         # Timeout — stop gracefully so we don't get stuck
-        if self.current_playlist() == name:
+        if (self._status() or {}).get("status_name") == "playing":
             log.warning("[FPP] play_once timeout for %r — stopping", name)
             self.stop()
 
@@ -659,7 +667,6 @@ def main() -> None:
                     continue
                 last_letter_time = now_ts
 
-                idle_was_playing = (fpp.current_playlist() == pl_idle)
                 fpp.stop()
                 if use_video_letter:
                     media = ev_letters[next_letter_idx % len(ev_letters)]
@@ -685,10 +692,11 @@ def main() -> None:
                 ha.set_letter_today(letter_today_count)
                 db.log_event("letter", event_meta)
 
-                # Resume idle if it was playing before the event; otherwise
-                # leave FPP in whatever state the native scheduler left it.
-                if idle_was_playing:
-                    fpp.start_playlist(pl_idle, repeat=True)
+                # Always resume idle after the event.
+                # idle_was_playing check removed: in FPP 9.x current_playlist()
+                # drops to "" after ~5 s of playback so it always returned False,
+                # silently preventing idle from restarting after every event.
+                fpp.start_playlist(pl_idle, repeat=True)
                 continue
 
             # ── DONATION ──────────────────────────────────────────────────────
@@ -698,7 +706,6 @@ def main() -> None:
                     continue
                 last_donation_time = now_ts
 
-                idle_was_playing = (fpp.current_playlist() == pl_idle)
                 fpp.stop()
                 if use_video_donation:
                     media = ev_donations[next_donation_idx % len(ev_donations)]
@@ -731,10 +738,7 @@ def main() -> None:
                 ha.set_donation_today(donation_today_count)
                 db.log_event("donation", don_meta)
 
-                # Resume idle if it was playing before the event; otherwise
-                # leave FPP in whatever state the native scheduler left it.
-                if idle_was_playing:
-                    fpp.start_playlist(pl_idle, repeat=True)
+                fpp.start_playlist(pl_idle, repeat=True)
                 continue
 
             # ── SPECIAL 1 ────────────────────────────────────────────────────
@@ -747,7 +751,6 @@ def main() -> None:
                     continue
                 last_special1_time = now_ts
 
-                idle_was_playing = (fpp.current_playlist() == pl_idle)
                 fpp.stop()
                 media = ev_specials1[next_special1_idx % len(ev_specials1)]
                 next_special1_idx += 1
@@ -766,8 +769,7 @@ def main() -> None:
                 ha.set_special_today(1, special1_today_count)
                 db.log_event("special_1", sp1_meta)
 
-                if idle_was_playing:
-                    fpp.start_playlist(pl_idle, repeat=True)
+                fpp.start_playlist(pl_idle, repeat=True)
                 continue
 
             # ── SPECIAL 2 ────────────────────────────────────────────────────
@@ -780,7 +782,6 @@ def main() -> None:
                     continue
                 last_special2_time = now_ts
 
-                idle_was_playing = (fpp.current_playlist() == pl_idle)
                 fpp.stop()
                 media = ev_specials2[next_special2_idx % len(ev_specials2)]
                 next_special2_idx += 1
@@ -799,8 +800,7 @@ def main() -> None:
                 ha.set_special_today(2, special2_today_count)
                 db.log_event("special_2", sp2_meta)
 
-                if idle_was_playing:
-                    fpp.start_playlist(pl_idle, repeat=True)
+                fpp.start_playlist(pl_idle, repeat=True)
                 continue
 
             # ── RADAR A ───────────────────────────────────────────────────────

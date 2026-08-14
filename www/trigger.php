@@ -173,6 +173,26 @@ switch ($action) {
     $missing = [];
     if ($radarEnabled && !$hasSerial) $missing[] = "python3-serial";
 
+    // MQTT status: check if broker host is configured and resolvable
+    $mqttStatus = "disabled";
+    $mqttHost   = trim((string)($sledCfg['mqtt']['host'] ?? ''));
+    $useFppMqtt = !empty($sledCfg['mqtt']['use_fpp_settings']) || !isset($sledCfg['mqtt']['use_fpp_settings']);
+    if (!$mqttHost && $useFppMqtt) {
+        // Try reading from FPP settings API
+        $fppMqttRaw = @file_get_contents('http://localhost/api/settings/MQTTServer', false,
+            stream_context_create(['http' => ['timeout' => 2]]));
+        $fppMqtt = $fppMqttRaw ? @json_decode($fppMqttRaw, true) : null;
+        $mqttHost = is_array($fppMqtt) ? trim((string)($fppMqtt['value'] ?? '')) : '';
+    }
+    if ($mqttHost) {
+        // Quick DNS check
+        $resolved = @dns_get_record($mqttHost, DNS_A | DNS_AAAA);
+        // dns_get_record returns false or [] on failure; also works for IPs via gethostbyname
+        $ipCheck  = ($resolved !== false && count((array)$resolved) > 0)
+                    || filter_var($mqttHost, FILTER_VALIDATE_IP);
+        $mqttStatus = $ipCheck ? "configured" : "dns_error";
+    }
+
     echo json_encode([
       "ok"           => (count($missing) === 0),
       "daemon_up"    => $hasDaemon,
@@ -182,6 +202,8 @@ switch ($action) {
       "fix_cmd"      => count($missing) > 0
           ? "sudo apt-get install -y " . implode(" ", $missing)
           : "",
+      "mqtt_status"  => $mqttStatus,   // "disabled" | "configured" | "dns_error"
+      "mqtt_host"    => $mqttHost,
     ]);
     exit;
   }
