@@ -236,5 +236,7 @@ else
     log "WARN: sudoers rule validation failed — rule not installed (daemon control may require manual start)"
 fi
 
+setSetting restartFlag 1 2>/dev/null || true
+
 log "=== SLED Santa Mailbox install complete ==="
 exit 0

@@ -23,5 +23,9 @@ if command -v systemctl >/dev/null 2>&1; then
     fi
 fi
 
+: "${FPPDIR:=/opt/fpp}"
+. "${FPPDIR}/scripts/common" 2>/dev/null || true
+setSetting restartFlag 1 2>/dev/null || true
+
 log "=== SLED Santa Mailbox uninstall complete. Config and media left in place. ==="
 exit 0
