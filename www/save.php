@@ -56,19 +56,42 @@ $cfg["pins"]["donation"]  = ($pinDonation !== "") ? (int)$pinDonation : null;
 $cfg["pins"]["special_1"] = ($pinSpecial1 !== "") ? (int)$pinSpecial1 : null;
 $cfg["pins"]["special_2"] = ($pinSpecial2 !== "") ? (int)$pinSpecial2 : null;
 
-// Warn on reserved hardware pins (SPI, I2C, UART) — these are owned by kernel
-// drivers when the interface is enabled in config.txt and cause silent GPIO failures.
-$reservedGpio = [
-    2  => "I2C1 SDA (i2c_bcm2835 — dtparam=i2c_arm=on)",
-    3  => "I2C1 SCL (i2c_bcm2835 — dtparam=i2c_arm=on)",
-    7  => "SPI0 CE1 (spi_bcm2835 — dtparam=spi=on)",
-    8  => "SPI0 CE0 (spi_bcm2835 — dtparam=spi=on)",
-    9  => "SPI0 MISO (spi_bcm2835 — dtparam=spi=on)",
-    10 => "SPI0 MOSI (spi_bcm2835 — dtparam=spi=on)",
-    11 => "SPI0 SCLK (spi_bcm2835 — dtparam=spi=on)",
-    14 => "UART0 TX (uart0 — enable_uart=1)",
-    15 => "UART0 RX (uart0 — enable_uart=1)",
-];
+// Build the reserved-pin list dynamically from the Pi boot config so we only
+// warn about interfaces that are actually enabled on this hardware.
+// Returns an empty array on non-Pi systems (no config.txt) or when an
+// interface is disabled — no false positives for hats that don't use SPI/I2C.
+function read_boot_config(): string {
+    foreach (['/boot/firmware/config.txt', '/boot/config.txt'] as $p) {
+        if (is_readable($p)) return file_get_contents($p) ?: '';
+    }
+    return '';
+}
+function iface_enabled(string $cfg, string $param): bool {
+    return (bool) preg_match('/^\s*' . preg_quote($param, '/') . '\s*=\s*on/m', $cfg);
+}
+$bootCfg      = read_boot_config();
+$reservedGpio = [];
+if (iface_enabled($bootCfg, 'dtparam=spi')) {
+    $reservedGpio += [
+        7  => "SPI0 CE1 (spi_bcm2835 — dtparam=spi=on)",
+        8  => "SPI0 CE0 (spi_bcm2835 — dtparam=spi=on)",
+        9  => "SPI0 MISO (spi_bcm2835 — dtparam=spi=on)",
+        10 => "SPI0 MOSI (spi_bcm2835 — dtparam=spi=on)",
+        11 => "SPI0 SCLK (spi_bcm2835 — dtparam=spi=on)",
+    ];
+}
+if (iface_enabled($bootCfg, 'dtparam=i2c_arm')) {
+    $reservedGpio += [
+        2 => "I2C1 SDA (i2c_bcm2835 — dtparam=i2c_arm=on)",
+        3 => "I2C1 SCL (i2c_bcm2835 — dtparam=i2c_arm=on)",
+    ];
+}
+if (iface_enabled($bootCfg, 'enable_uart')) {
+    $reservedGpio += [
+        14 => "UART0 TX (uart0 — enable_uart=1)",
+        15 => "UART0 RX (uart0 — enable_uart=1)",
+    ];
+}
 $pinWarnings = [];
 $namedPins = [
     "Letter"   => $cfg["pins"]["letter"],
