@@ -199,18 +199,41 @@ class FPPPlayer:
                 break
             time.sleep(0.2)
 
-        # Wait for FPP to return to idle — track status_name, NOT playlist name.
-        # In FPP 9.x the current_playlist.playlist field drops to "" mid-play when
-        # FPP transitions from playlist-level to media-level playback, so using
-        # current_playlist() would give a false "finished" signal after ~5 s.
-        deadline = time.time() + timeout_s
+        # Wait for the event video to finish.
+        #
+        # Two completion signals are watched:
+        #   1. status_name == "idle"  — clean finish, nothing else queued.
+        #   2. seconds_played resets to near zero after meaningful playback —
+        #      FPP resumed the idle playlist (or any other playlist), meaning
+        #      our event video is done.
+        #
+        # We do NOT rely on current_playlist.playlist — in FPP 9.x that field
+        # drops to "" after ~5 s of media-level playback, giving a false signal.
+        # seconds_played is stable and resets cleanly on every video transition.
+        #
+        # The peak > 5.0 guard prevents a false positive during the initial
+        # buffering window before the video is actually rolling.
+        deadline     = time.time() + timeout_s
+        seconds_peak = 0.0
         while time.time() < deadline and not _shutdown.is_set():
-            raw  = self._status()
+            raw   = self._status()
             sname = (raw or {}).get("status_name", "idle")
-            log.debug("[FPP] play_file status: %s", sname)
+            secs  = float((raw or {}).get("seconds_played", 0))
+            log.debug("[FPP] play_file status: %s  seconds_played: %.1f", sname, secs)
+
             if sname == "idle":
-                log.info("[FPP] play_file finished: %s", filename)
+                log.info("[FPP] play_file finished (idle): %s", filename)
                 return
+
+            if sname == "playing":
+                if secs > seconds_peak:
+                    seconds_peak = secs
+                # seconds_played reset → FPP started a new video (idle playlist
+                # resumed after our event video ended)
+                if seconds_peak > 5.0 and secs < 1.0:
+                    log.info("[FPP] play_file finished (playlist resumed): %s", filename)
+                    return
+
             time.sleep(0.5)
 
         log.warning("[FPP] play_file timeout for %r — stopping", filename)
