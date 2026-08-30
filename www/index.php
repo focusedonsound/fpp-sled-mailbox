@@ -116,6 +116,14 @@ $pluginVersion = pluginVersion();
   cursor: not-allowed;
   pointer-events: none;
 }
+.sled-btn-secondary {
+  background-color: #6c757d;
+  border-color: #6c757d;
+}
+.sled-btn-secondary:hover, .sled-btn-secondary:focus {
+  background-color: #5c636a;
+  border-color: #565e64;
+}
 .sled-btn-sm {
   padding: .2rem .5rem;
   font-size: .8rem;
@@ -220,6 +228,10 @@ $pluginVersion = pluginVersion();
     <a href="https://github.com/focusedonsound/fpp-sled-mailbox" target="_blank" rel="noopener noreferrer"
        class="sled-btn">
       <i class="fas fa-fw fa-code-branch"></i> GitHub Repo
+    </a>
+    <a href="https://github.com/focusedonsound/fpp-sled-mailbox/issues" target="_blank" rel="noopener noreferrer"
+       class="sled-btn sled-btn-secondary">
+      <i class="fas fa-fw fa-bug"></i> Report an Issue
     </a>
   </div>
 </div>
