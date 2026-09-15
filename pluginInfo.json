@@ -8,6 +8,46 @@
   "bugURL": "https://github.com/focusedonsound/fpp-sled-mailbox/issues",
   "iconURL": "https://raw.githubusercontent.com/focusedonsound/fpp-sled-mailbox/main/icon.png",
   "allowUpdates": 1,
+  "privacy": {
+    "summary": "Logs presence/motion events from the mailbox's radar and beam-break sensors locally, and, if enabled, publishes counts to your MQTT broker. No registration, no license server.",
+    "sends": [
+      {
+        "to": "your MQTT broker",
+        "what": "presence/car-count events and Home Assistant discovery config",
+        "why": "MQTT / Home Assistant integration (disabled by default)",
+        "alwaysOn": false
+      }
+    ],
+    "collects": [
+      {
+        "what": "presence/motion events: letter drop, donation, car pass/parked, direction, timestamp",
+        "about": "passers-by",
+        "keptDays": null,
+        "canDelete": true,
+        "where": "plugindata/fpp-sled-mailbox/state/sled.db"
+      },
+      {
+        "what": "transient raw radar diagnostic snapshot (per-gate distance/energy) while diagnostics is open",
+        "about": "passers-by",
+        "keptDays": 0,
+        "canDelete": false,
+        "where": "plugindata/fpp-sled-mailbox/state/sled_radar_a.json and sled_radar_b.json"
+      }
+    ],
+    "sensors": [
+      { "type": "presence", "stored": true },
+      { "type": "gpio-input", "stored": false }
+    ],
+    "remoteAccess": "none",
+    "systemChanges": [
+      { "kind": "service", "what": "creates and enables sled-mailbox.service (systemd), running as the fpp user" },
+      { "kind": "privilege", "what": "adds a sudoers rule (/etc/sudoers.d/sled-mailbox) letting fpp restart sled-mailbox.service only" },
+      { "kind": "core-settings", "what": "writes its reserved GPIO pins into FPP's own gpio.json to avoid pin conflicts" },
+      { "kind": "download", "what": "installs adafruit-circuitpython-dht via pip from PyPI, only if DHT11 support is enabled" }
+    ],
+    "closedCode": false,
+    "other": "The dashboard's \"Reset Today's Data\" clears only the current day's events; older history persists with no automatic retention/purge unless deleted by hand."
+  },
   "versions": [
     {
       "minFPPVersion": "9.0",
