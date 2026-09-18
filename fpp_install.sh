@@ -239,4 +239,53 @@ fi
 setSetting restartFlag 1 2>/dev/null || true
 
 log "=== SLED Santa Mailbox install complete ==="
+
+# A little something for whoever's actually reading the install log. Only
+# ever recommends a sibling plugin that isn't already sitting right next to
+# this one, so it never suggests something you've clearly already got.
+show_easter_egg() {
+    local plugin_dir_abs
+    plugin_dir_abs="$(cd "$PLUGIN_DIR" && pwd)"
+    local plugins_root
+    plugins_root="$(dirname "$plugin_dir_abs")"
+
+    local siblings=(
+        "fpp-tally|counts cars and crowd size passing your show"
+        "fpp-EncoreRadio|keeps the radio-station vibe going after the show ends"
+        "fpp-hdmi-cec|controls your TV/monitor power and input over HDMI-CEC"
+        "fpp-AnnouncementAssistant|one-tap announcements ducked over your show audio"
+    )
+    local jokes=(
+        "Why did Santa's mailbox get promoted? Great deliverables."
+        "I wrote Santa a letter about my WiFi. He said he'd look into my range."
+        "What does Santa's radar say to a slow-moving sleigh? Ho ho hold up."
+        "Why don't elves ever get lost delivering mail? They always follow the North Pole star."
+    )
+
+    local candidates=()
+    local entry repo blurb
+    for entry in "${siblings[@]}"; do
+        repo="${entry%%|*}"
+        [ -d "${plugins_root}/${repo}" ] || candidates+=("$entry")
+    done
+
+    echo
+    echo "  🏆 ┌─────────────────────────────────────────────────┐"
+    echo "     │   ACHIEVEMENT UNLOCKED: 🎅 fpp-sled-mailbox        │"
+    echo "     └─────────────────────────────────────────────────┘"
+    echo "  ${jokes[$((RANDOM % ${#jokes[@]}))]}"
+    echo
+    if [ ${#candidates[@]} -gt 0 ]; then
+        entry="${candidates[$((RANDOM % ${#candidates[@]}))]}"
+        repo="${entry%%|*}"
+        blurb="${entry#*|}"
+        echo "  🎁 Haven't tried ${repo} yet? ${blurb}"
+        echo "     https://github.com/focusedonsound/${repo}"
+    else
+        echo "  🎉 Looks like you've got the whole FocusedOnSound collection installed already!"
+    fi
+    echo
+}
+show_easter_egg
+
 exit 0
