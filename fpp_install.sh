@@ -256,10 +256,10 @@ show_easter_egg() {
         "fpp-AnnouncementAssistant|one-tap announcements ducked over your show audio"
     )
     local jokes=(
-        "Why did Santa's mailbox get promoted? Great deliverables."
-        "I wrote Santa a letter about my WiFi. He said he'd look into my range."
-        "What does Santa's radar say to a slow-moving sleigh? Ho ho hold up."
-        "Why don't elves ever get lost delivering mail? They always follow the North Pole star."
+        "Why did Santa's mailbox get a promotion? Excellent delivery record, zero returns."
+        "I asked the mailbox for advice. It just told me to stamp it out."
+        "Why do elves make the best mail carriers? They always know the chimney shortcuts."
+        "What's Santa's favorite class of mail? First class, obviously."
     )
 
     local candidates=()
@@ -270,19 +270,20 @@ show_easter_egg() {
     done
 
     echo
-    echo "  🏆 ┌─────────────────────────────────────────────────┐"
-    echo "     │   ACHIEVEMENT UNLOCKED: 🎅 fpp-sled-mailbox        │"
-    echo "     └─────────────────────────────────────────────────┘"
-    echo "  ${jokes[$((RANDOM % ${#jokes[@]}))]}"
+    echo "🏆 ACHIEVEMENT UNLOCKED"
+    echo "════════════════════════════════════════"
+    echo "🎅  fpp-sled-mailbox installed / updated"
+    echo
+    echo "  \"${jokes[$((RANDOM % ${#jokes[@]}))]}\""
     echo
     if [ ${#candidates[@]} -gt 0 ]; then
         entry="${candidates[$((RANDOM % ${#candidates[@]}))]}"
         repo="${entry%%|*}"
         blurb="${entry#*|}"
-        echo "  🎁 Haven't tried ${repo} yet? ${blurb}"
-        echo "     https://github.com/focusedonsound/${repo}"
+        echo "🎁 Haven't tried ${repo} yet? ${blurb}"
+        echo "   https://github.com/focusedonsound/${repo}"
     else
-        echo "  🎉 Looks like you've got the whole FocusedOnSound collection installed already!"
+        echo "🎉 Looks like you've got the whole FocusedOnSound collection installed already!"
     fi
     echo
 }
