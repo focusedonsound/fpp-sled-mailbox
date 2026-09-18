@@ -256,10 +256,10 @@ show_easter_egg() {
         "fpp-AnnouncementAssistant|one-tap announcements ducked over your show audio"
     )
     local jokes=(
-        "Why did Santa's mailbox get a promotion? Excellent delivery record, zero returns."
-        "I asked the mailbox for advice. It just told me to stamp it out."
-        "Why do elves make the best mail carriers? They always know the chimney shortcuts."
-        "What's Santa's favorite class of mail? First class, obviously."
+        "Why did the mailbox retire early? It had delivered enough for one lifetime."
+        "Santa's mailbox doesn't do small talk. Strictly first-class conversation."
+        "I asked the elves for a raise. They told me to check the mail."
+        "Why did the mailbox get invited to every party? It always knows how to make an entrance — through the slot."
     )
 
     local candidates=()
@@ -270,21 +270,28 @@ show_easter_egg() {
     done
 
     echo
-    echo "🏆 ACHIEVEMENT UNLOCKED"
-    echo "════════════════════════════════════════"
-    echo "🎅  fpp-sled-mailbox installed / updated"
+    echo "══════════════════════════════════════════"
+    echo "   🏆  A C H I E V E M E N T   U N L O C K E D"
+    echo "══════════════════════════════════════════"
+    echo
+    echo "  🎅  fpp-sled-mailbox — installed & ready to roll"
     echo
     echo "  \"${jokes[$((RANDOM % ${#jokes[@]}))]}\""
     echo
+    echo "  ⭐⭐⭐⭐⭐  (dad-joke rating, self-awarded)"
+    echo
+    echo "──────────────────────────────────────────"
     if [ ${#candidates[@]} -gt 0 ]; then
         entry="${candidates[$((RANDOM % ${#candidates[@]}))]}"
         repo="${entry%%|*}"
         blurb="${entry#*|}"
-        echo "🎁 Haven't tried ${repo} yet? ${blurb}"
-        echo "   https://github.com/focusedonsound/${repo}"
+        echo "  🎁  NEXT UP: ${repo}"
+        echo "      ${blurb}"
+        echo "      → https://github.com/focusedonsound/${repo}"
     else
-        echo "🎉 Looks like you've got the whole FocusedOnSound collection installed already!"
+        echo "  🎉  FULL COLLECTION UNLOCKED — every FocusedOnSound plugin, right here."
     fi
+    echo "──────────────────────────────────────────"
     echo
 }
 show_easter_egg
