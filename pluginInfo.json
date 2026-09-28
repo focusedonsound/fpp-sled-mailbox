@@ -8,6 +8,7 @@
   "bugURL": "https://github.com/focusedonsound/fpp-sled-mailbox/issues",
   "iconURL": "https://raw.githubusercontent.com/focusedonsound/fpp-sled-mailbox/main/icon.png",
   "allowUpdates": 1,
+  "releaseNotesStyle": "gitRelease",
   "privacy": {
     "summary": "Logs presence/motion events from the mailbox's radar and beam-break sensors locally, and, if enabled, publishes counts to your MQTT broker. No registration, no license server.",
     "sends": [
