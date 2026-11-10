@@ -252,6 +252,9 @@ class HAMqtt:
             ("sensor", "car_today"),
             ("sensor", "inbound_today"),
             ("sensor", "outbound_today"),
+            ("sensor", "people_total"),
+            ("sensor", "people_today"),
+            ("sensor", "last_person_time"),
             ("sensor", "letter_total"),
             ("sensor", "donation_total"),
             ("sensor", "letter_today"),
@@ -289,9 +292,10 @@ class HAMqtt:
 
         # ── Timestamp sensors ─────────────────────────────────────────────
         for obj_id, name, icon in (
-            ("last_letter",   "Last Letter",   "mdi:email-clock"),
-            ("last_donation", "Last Donation", "mdi:gift-outline"),
-            ("last_car_time", "Last Car",      "mdi:car-clock"),
+            ("last_letter",     "Last Letter",   "mdi:email-clock"),
+            ("last_donation",   "Last Donation", "mdi:gift-outline"),
+            ("last_car_time",   "Last Car",      "mdi:car-clock"),
+            ("last_person_time","Last Person",   "mdi:account-clock"),
         ):
             self._publish_config("sensor", obj_id, name, f"{b}/status/{obj_id}",
                                  {"device_class": "timestamp", "icon": icon})
@@ -308,6 +312,8 @@ class HAMqtt:
             ("car_today",       "Cars Today",         "cars",     "measurement",      "mdi:car"),
             ("inbound_today",   "Inbound Today",      "cars",     "measurement",      "mdi:arrow-right-bold"),
             ("outbound_today",  "Outbound Today",     "cars",     "measurement",      "mdi:arrow-left-bold"),
+            ("people_total",    "People (Total)",     "people",   "total_increasing", "mdi:account-group"),
+            ("people_today",    "People Today",       "people",   "measurement",      "mdi:account"),
             ("letter_total",    "Letters (Total)",    "letters",  "total_increasing", "mdi:email-mark-as-unread"),
             ("donation_total",  "Donations (Total)",  "donations","total_increasing", "mdi:gift-open"),
             ("letter_today",    "Letters Today",      "letters",  "measurement",      "mdi:email"),
@@ -466,6 +472,16 @@ class HAMqtt:
 
     def set_outbound_today(self, n: int) -> None:
         self.pub(f"{self.base}/status/outbound_today", str(n))
+
+    # ── People (presence-count mode) ──────────────────────────────────
+    def set_people_total(self, n: int) -> None:
+        self.pub(f"{self.base}/status/people_total", str(n), retain=True)
+
+    def set_people_today(self, n: int) -> None:
+        self.pub(f"{self.base}/status/people_today", str(n))
+
+    def set_last_person_time(self, iso: str) -> None:
+        self.pub(f"{self.base}/status/last_person_time", iso, retain=True)
 
     # ── Environment ───────────────────────────────────────────────────
     def set_env(self, temp_c: float, hum: float) -> None:

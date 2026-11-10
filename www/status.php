@@ -22,8 +22,13 @@ if (file_exists($CFG_PATH)) {
 
 $running    = sled_daemon_running($PID_FILE);
 $carEnabled = !empty($cfg['ld2410']['enabled']);
+$peopleMode = (($cfg['tracking']['mode'] ?? 'cars') === 'people');
 $labelIn    = htmlspecialchars($cfg['direction']['label_toward'] ?? 'Inbound');
 $labelOut   = htmlspecialchars($cfg['direction']['label_away']   ?? 'Outbound');
+
+// Radar panel presentation depends on tracking mode.
+$radarTitle = $peopleMode ? 'People Count' : 'Car Traffic';
+$radarIcon  = $peopleMode ? 'fa-person-walking' : 'fa-car';
 ?>
 
 <!-- Chart.js — local copy installed by fpp_install.sh; CDN fallback if not yet present -->
@@ -64,14 +69,23 @@ $labelOut   = htmlspecialchars($cfg['direction']['label_away']   ?? 'Outbound');
 <!-- ── Summary Cards ────────────────────────────────────────────────────────── -->
 <div class="row g-2 mb-3">
   <?php
-  $cards = [
-    ['id'=>'cardLetters',   'icon'=>'fa-envelope',   'label'=>'Letters Today',      'color'=>'#36a2eb'],
-    ['id'=>'cardDonations', 'icon'=>'fa-gift',        'label'=>'Donations Today',    'color'=>'#ff6384'],
-    ['id'=>'cardInbound',   'icon'=>'fa-arrow-right', 'label'=>$labelIn.' Today',    'color'=>'#4bc0c0'],
-    ['id'=>'cardOutbound',  'icon'=>'fa-arrow-left',  'label'=>$labelOut.' Today',   'color'=>'#ffce56'],
-  ];
+  if ($peopleMode) {
+    $cards = [
+      ['id'=>'cardLetters',   'icon'=>'fa-envelope',        'label'=>'Letters Today',   'color'=>'#36a2eb'],
+      ['id'=>'cardDonations', 'icon'=>'fa-gift',            'label'=>'Donations Today', 'color'=>'#ff6384'],
+      ['id'=>'cardPeople',    'icon'=>'fa-person-walking',  'label'=>'People Today',    'color'=>'#4bc0c0'],
+    ];
+  } else {
+    $cards = [
+      ['id'=>'cardLetters',   'icon'=>'fa-envelope',   'label'=>'Letters Today',      'color'=>'#36a2eb'],
+      ['id'=>'cardDonations', 'icon'=>'fa-gift',        'label'=>'Donations Today',    'color'=>'#ff6384'],
+      ['id'=>'cardInbound',   'icon'=>'fa-arrow-right', 'label'=>$labelIn.' Today',    'color'=>'#4bc0c0'],
+      ['id'=>'cardOutbound',  'icon'=>'fa-arrow-left',  'label'=>$labelOut.' Today',   'color'=>'#ffce56'],
+    ];
+  }
+  $radarCardIds = ['cardInbound','cardOutbound','cardPeople'];
   foreach ($cards as $c):
-    $disabled = !$carEnabled && in_array($c['id'], ['cardInbound','cardOutbound']);
+    $disabled = !$carEnabled && in_array($c['id'], $radarCardIds);
   ?>
   <div class="col-6 col-md-3">
     <div class="fppTableWrapper h-100 p-0">
@@ -83,7 +97,7 @@ $labelOut   = htmlspecialchars($cfg['direction']['label_away']   ?? 'Outbound');
              id="<?= $c['id'] ?>Val">—</div>
         <div class="text-muted small mt-1"><?= $c['label'] ?></div>
         <div style="font-size:0.7rem;color:#666;margin-top:2px;" id="<?= $c['id'] ?>Sub">
-          <?= $disabled ? 'Car Counter disabled' : '&mdash;' ?>
+          <?= $disabled ? 'Radar not enabled' : '&mdash;' ?>
         </div>
       </div>
     </div>
@@ -131,9 +145,9 @@ $labelOut   = htmlspecialchars($cfg['direction']['label_away']   ?? 'Outbound');
     <div class="fppTableWrapper fppTableWrapperAsTable h-100">
       <div class="fppTableContents p-3">
         <div class="d-flex justify-content-between align-items-center mb-2">
-          <strong><i class="fas fa-fw fa-car"></i>&nbsp;Car Traffic</strong>
+          <strong><i class="fas fa-fw <?= $radarIcon ?>"></i>&nbsp;<?= $radarTitle ?></strong>
           <?php if (!$carEnabled): ?>
-          <span class="badge bg-secondary">Car Counter Not Enabled</span>
+          <span class="badge bg-secondary">Radar Not Enabled</span>
           <?php else: ?>
           <small class="text-muted" id="sledCarChartLabel">Last 30 Days</small>
           <?php endif; ?>
@@ -144,7 +158,8 @@ $labelOut   = htmlspecialchars($cfg['direction']['label_away']   ?? 'Outbound');
         <?php if (!$carEnabled): ?>
         <div class="text-muted text-center small mt-2">
           <i class="fas fa-fw fa-car-burst"></i>
-          Enable the HLK-LD2410B radar in <strong>Settings</strong> to track car traffic
+          Enable the HLK-LD2410B radar in <strong>Settings</strong> to track
+          <?= $peopleMode ? 'people' : 'car traffic' ?>
         </div>
         <?php endif; ?>
       </div>
@@ -292,30 +307,35 @@ function sledBuildMailChart(data) {
 
 // ── Car Traffic chart ─────────────────────────────────────────────────────────
 function sledBuildCarChart(data) {
-  const labels   = data.chart.labels.map(l => sledFmtLabel(l, data.period));
-  const inLabel  = data.label_inbound  || 'Inbound';
-  const outLabel = data.label_outbound || 'Outbound';
-  const ptR      = data.chart.labels.length > 60 ? 0 : 3;
+  const labels     = data.chart.labels.map(l => sledFmtLabel(l, data.period));
+  const inLabel    = data.label_inbound  || 'Inbound';
+  const outLabel   = data.label_outbound || 'Outbound';
+  const ptR        = data.chart.labels.length > 60 ? 0 : 3;
+  const peopleMode = (data.tracking_mode === 'people');
 
   if (sledCarCh) {
-    sledCarCh.data.labels           = labels;
-    sledCarCh.data.datasets[0].data = data.chart.inbound;
-    sledCarCh.data.datasets[1].data = data.chart.outbound;
+    sledCarCh.data.labels = labels;
+    if (peopleMode) {
+      sledCarCh.data.datasets[0].data = data.chart.people;
+    } else {
+      sledCarCh.data.datasets[0].data = data.chart.inbound;
+      sledCarCh.data.datasets[1].data = data.chart.outbound;
+    }
     sledCarCh.update('none');
   } else {
-    sledCarCh = new Chart(document.getElementById('sledCarChart'), {
-      type: 'line',
-      data: {
-        labels,
-        datasets: [
-          { label: inLabel,  data: data.chart.inbound,
+    const datasets = peopleMode
+      ? [ { label: 'People', data: data.chart.people,
+            borderColor: 'rgba(75,192,192,1)', backgroundColor: 'rgba(75,192,192,0.1)',
+            tension: 0.35, fill: true, pointRadius: ptR } ]
+      : [ { label: inLabel,  data: data.chart.inbound,
             borderColor: 'rgba(75,192,192,1)', backgroundColor: 'rgba(75,192,192,0.1)',
             tension: 0.35, fill: true, pointRadius: ptR },
           { label: outLabel, data: data.chart.outbound,
             borderColor: 'rgba(255,206,86,1)', backgroundColor: 'rgba(255,206,86,0.1)',
-            tension: 0.35, fill: true, pointRadius: ptR },
-        ],
-      },
+            tension: 0.35, fill: true, pointRadius: ptR } ];
+    sledCarCh = new Chart(document.getElementById('sledCarChart'), {
+      type: 'line',
+      data: { labels, datasets },
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: {
@@ -348,7 +368,10 @@ function sledUpdateCards(data) {
       a.letters   ? `${Number(a.letters).toLocaleString()} all-time`   : 'no events yet');
   set('cardDonations', t.donations,
       a.donations ? `${Number(a.donations).toLocaleString()} all-time` : 'no events yet');
-  if (data.car_enabled) {
+  if (data.tracking_mode === 'people') {
+    set('cardPeople', t.people,
+        a.people ? `${Number(a.people).toLocaleString()} all-time` : 'no detections yet');
+  } else if (data.car_enabled) {
     set('cardInbound',  t.inbound,
         a.cars ? `${Number(a.cars).toLocaleString()} total cars` : 'no cars yet');
     set('cardOutbound', t.outbound, null);
@@ -357,9 +380,10 @@ function sledUpdateCards(data) {
 
 // ── Activity feed ─────────────────────────────────────────────────────────────
 const SLED_KIND = {
-  letter:   { icon: 'fa-envelope', color: '#36a2eb', label: 'Letter'   },
-  donation: { icon: 'fa-gift',     color: '#ff6384', label: 'Donation' },
-  car:      { icon: 'fa-car',      color: '#4bc0c0', label: 'Car'      },
+  letter:   { icon: 'fa-envelope',       color: '#36a2eb', label: 'Letter'   },
+  donation: { icon: 'fa-gift',           color: '#ff6384', label: 'Donation' },
+  car:      { icon: 'fa-car',            color: '#4bc0c0', label: 'Car'      },
+  person:   { icon: 'fa-person-walking', color: '#4bc0c0', label: 'Person'   },
 };
 
 function sledUpdateFeed(events) {
@@ -477,7 +501,7 @@ function sledSetRange(days, period) {
 async function sledConfirmReset() {
   if (!confirm(
     "Reset all of today's events?\n\n" +
-    "This removes today's letter, donation, and car events and recalculates " +
+    "This removes today's letter, donation, car and people events and recalculates " +
     "all-time totals from remaining history.\n\n" +
     "Use this to clear test data before going live."
   )) return;
