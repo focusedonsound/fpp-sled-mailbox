@@ -21,6 +21,7 @@ import signal
 import sys
 import time
 import threading
+from collections import deque
 import datetime as dt
 import urllib.request
 import urllib.parse
@@ -55,6 +56,8 @@ LOG_FILE       = os.path.join(_LOGDIR, "plugin-fpp-sled-mailbox.log")
 _STATE_DIR     = "/home/fpp/media/plugins/fpp-sled-mailbox/state"
 CMD_QUEUE_FILE = os.path.join(_STATE_DIR, "sled_trigger.cmd")
 PID_FILE       = os.path.join(_STATE_DIR, "sled_daemon.pid")
+# Live GPIO sensor states for the dashboard diagnostic (written ~2 Hz).
+GPIO_STATE_FILE = os.path.join(_STATE_DIR, "sled_gpio.json")
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 # Ensure the log directory exists BEFORE opening the FileHandler.
@@ -143,13 +146,19 @@ class FPPPlayer:
     _TEMP_PLAYLIST = "sled_event"
     _PLAYLIST_DIR  = "/home/fpp/media/playlists"
 
-    def play_file(self, filename: str, timeout_s: int = 120) -> None:
+    def play_file(self, filename: str, timeout_s: int = 120, should_interrupt=None) -> None:
         """
         Play a single video file by writing a minimal FPP playlist JSON file
         and then calling Start Playlist (which we know works in all FPP versions).
 
         The temp playlist 'sled_event' is overwritten each time so no manual
         setup is required — just configure video filenames in the SLED UI.
+
+        should_interrupt — optional zero-arg callable polled while the video
+        plays.  When it returns True the video is stopped early and control
+        returns to the caller.  Used so a higher-priority letter/donation event
+        can preempt a lower-priority visitor greeting.  Letter and donation
+        playback pass no callback and are therefore never interrupted.
         """
         if not filename:
             return
@@ -216,6 +225,12 @@ class FPPPlayer:
         deadline     = time.time() + timeout_s
         seconds_peak = 0.0
         while time.time() < deadline and not _shutdown.is_set():
+            # Preempt for a higher-priority event (e.g. a letter arriving
+            # during a visitor greeting) before polling FPP status.
+            if should_interrupt is not None and should_interrupt():
+                log.info("[FPP] play_file preempted by higher-priority event: %s", filename)
+                self.stop()
+                return
             raw   = self._status()
             sname = (raw or {}).get("status_name", "idle")
             secs  = float((raw or {}).get("seconds_played", 0))
@@ -362,6 +377,31 @@ def poll_cmd_queue() -> Optional[str]:
     except Exception as exc:
         log.warning("[CmdQueue] Read error: %s", exc)
         return None
+
+
+# =============================================================================
+# GPIO live-state snapshot (dashboard diagnostic)
+# =============================================================================
+
+def write_gpio_state(ins) -> None:
+    """Write the current GPIO sensor states to GPIO_STATE_FILE (atomic).
+
+    gpio_live.php serves this so the dashboard can show each sensor's live
+    level — letting the user confirm, e.g., that a PIR goes LOW→HIGH on motion.
+    Silent on any error; this is a best-effort diagnostic, never fatal.
+    """
+    try:
+        sensors = ins.snapshot_gpio() if hasattr(ins, "snapshot_gpio") else []
+    except Exception:
+        return
+    snapshot = {"ts": time.time(), "sensors": sensors}
+    try:
+        tmp = GPIO_STATE_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(snapshot, f)
+        os.replace(tmp, GPIO_STATE_FILE)
+    except Exception:
+        pass
 
 
 # =============================================================================
@@ -560,18 +600,25 @@ def main() -> None:
         special1_pin = int(s1_raw) if s1_raw not in (None, "", "null") else None
         special2_pin = int(s2_raw) if s2_raw not in (None, "", "null") else None
 
+        # Per-slot polarity: active-LOW (default) for beam breaks, active-HIGH
+        # for PIR-style sensors.  Letter/donation are always active-LOW.
+        special1_active_high = bool(special1_cfg.get("active_high", False))
+        special2_active_high = bool(special2_cfg.get("active_high", False))
+
         sp_pins: List[tuple] = []
         if special1_pin is not None:
-            sp_pins.append((special1_pin, "s1", special1_label))
+            sp_pins.append((special1_pin, "s1", special1_label, special1_active_high))
         if special2_pin is not None:
-            sp_pins.append((special2_pin, "s2", special2_label))
+            sp_pins.append((special2_pin, "s2", special2_label, special2_active_high))
 
         ins = GPIOInputs(letter_pin, donation_pin, cfg, special_pins=sp_pins or None)
         log.info("Using GPIO inputs (letter=GPIO%d, donation=%s, special1=%s, special2=%s)",
                  letter_pin,
                  f"GPIO{donation_pin}"  if donation_pin  else "none",
-                 f"GPIO{special1_pin}"  if special1_pin  else "none",
-                 f"GPIO{special2_pin}"  if special2_pin  else "none")
+                 f"GPIO{special1_pin}[{'active-HIGH' if special1_active_high else 'active-LOW'}]"
+                     if special1_pin else "none",
+                 f"GPIO{special2_pin}[{'active-HIGH' if special2_active_high else 'active-LOW'}]"
+                     if special2_pin else "none")
 
     # ── FSM / timing state ─────────────────────────────────────────────────────
     tA: Optional[float] = None
@@ -588,6 +635,14 @@ def main() -> None:
 
     parked_a = ParkedState("A", parked_timeout_s)
     parked_b = ParkedState("B", parked_timeout_s)
+
+    # Events noticed while a visitor greeting video is playing are buffered
+    # here.  Letter/donation events are pushed to the front so they are handled
+    # before any deferred lower-priority events.
+    pending_events: "deque[str]" = deque()
+
+    # Throttle for the GPIO live-state diagnostic snapshot (~2 Hz).
+    last_gpio_write: float = 0.0
 
     log.info("SLED daemon running (PID=%d)  idle_playlist=%s",
              os.getpid(), pl_idle)
@@ -674,8 +729,15 @@ def main() -> None:
                     except Exception as exc:
                         log.warning("[Diag] diag_set parse error: %s", exc)
 
+            # ── GPIO live-state snapshot (dashboard diagnostic, ~2 Hz) ─────────
+            if (now_ts - last_gpio_write) >= 0.5:
+                last_gpio_write = now_ts
+                write_gpio_state(ins)
+
             # ── Poll hardware inputs ───────────────────────────────────────────
-            ev = ins.get_event(timeout=0.1)
+            # Buffered higher-priority events (letter/donation deferred during a
+            # visitor greeting) are drained before reading new hardware events.
+            ev = pending_events.popleft() if pending_events else ins.get_event(timeout=0.1)
             if not ev:
                 continue
 
@@ -778,7 +840,31 @@ def main() -> None:
                 media = ev_specials1[next_special1_idx % len(ev_specials1)]
                 next_special1_idx += 1
                 log.info("[%s] Playing video file: %s", special1_label, media)
-                fpp.play_file(media, timeout_s=pl_timeout)
+
+                def _visitor_preempt() -> bool:
+                    # Polled by play_file while the greeting plays.  Drains any
+                    # events that arrive during playback: letter/donation take
+                    # priority — queued to the front and used to preempt the
+                    # greeting; duplicate visitor triggers are dropped; anything
+                    # else (radar) is deferred in order.  Runs in the daemon's
+                    # own thread (play_file's poll loop), never a GPIO callback,
+                    # so no second FPP playback is ever started.
+                    urgent = False
+                    for _ in range(50):   # bounded drain
+                        incoming = ins.get_event(timeout=0)
+                        if incoming is None:
+                            break
+                        if incoming in ("l", "d"):
+                            pending_events.appendleft(incoming)
+                            urgent = True
+                        elif incoming == "s1":
+                            continue   # drop repeat greetings while one is active
+                        else:
+                            pending_events.append(incoming)
+                    return urgent
+
+                fpp.play_file(media, timeout_s=pl_timeout,
+                              should_interrupt=_visitor_preempt)
 
                 now_iso = dt.datetime.now(dt.timezone.utc).astimezone().isoformat()
                 sp1_meta: dict = {"file": media, "label": special1_label}
@@ -792,7 +878,11 @@ def main() -> None:
                 ha.set_special_today(1, special1_today_count)
                 db.log_event("special_1", sp1_meta)
 
-                fpp.start_playlist(pl_idle, repeat=True)
+                # Resume idle — unless a letter/donation preempted the greeting
+                # and is waiting at the front of the queue; that handler plays
+                # next and restarts idle itself, so don't flash idle in between.
+                if not (pending_events and pending_events[0] in ("l", "d")):
+                    fpp.start_playlist(pl_idle, repeat=True)
                 continue
 
             # ── SPECIAL 2 ────────────────────────────────────────────────────
@@ -865,6 +955,10 @@ def main() -> None:
         db.close()
         try:
             os.unlink(PID_FILE)
+        except Exception:
+            pass
+        try:
+            os.unlink(GPIO_STATE_FILE)
         except Exception:
             pass
         log.info("=== SLED daemon stopped ===")

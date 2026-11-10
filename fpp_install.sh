@@ -91,6 +91,18 @@ log "=== SLED Santa Mailbox install started (user=$(whoami), uid=$(id -u)) ==="
 mkdir -p /home/fpp/media/config
 mkdir -p /home/fpp/media/plugins/fpp-sled-mailbox/state
 
+# The daemon runs as the 'fpp' user (User=fpp in sled-mailbox.service), so the
+# state directory it writes its PID file, SQLite DB and runtime snapshots into
+# must be owned by fpp:fpp.  This installer runs as root, so a bare mkdir leaves
+# the directory root:root and the daemon crashes on startup with:
+#   PermissionError: [Errno 13] ... state/sled_daemon.pid   (GitHub issue #2)
+# chown -R is idempotent, safe to rerun on upgrades/reinstalls, and only changes
+# ownership — it never touches the mailbox records, donation data or config
+# inside.  Also fix the config dir/file so the web UI (running as fpp) can save.
+chown -R fpp:fpp /home/fpp/media/plugins/fpp-sled-mailbox/state 2>/dev/null || true
+chown fpp:fpp /home/fpp/media/config 2>/dev/null || true
+[ -f /home/fpp/media/config/sled.json ] && chown fpp:fpp /home/fpp/media/config/sled.json 2>/dev/null || true
+
 # pluginInfo.json's dependencies.packages block already declares
 # python3-serial, python3-paho-mqtt, and python3-gpiozero, so FPP 10+
 # installs them before this script runs (FPP_DEPS_RESOLVED=1 is exported in

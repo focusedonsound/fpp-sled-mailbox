@@ -282,6 +282,43 @@ Wait — for break-beam, use the OUTPUT pin of the receiver board (goes LOW on b
 | 3.3V | — | P1-1, P1-17 | — |
 | 5V | — | P1-2, P1-4 | — |
 
+### Special Message Sensors & Polarity (Active-LOW / Active-HIGH)
+
+The **Letter** and **Donation** inputs are always **active-LOW** beam breaks
+(internal pull-up, trigger on the falling edge).
+
+The two **Special Message** slots each have a **polarity selector** on the
+settings page:
+
+| Polarity | Bias | Trigger edge | Typical sensor |
+|---|---|---|---|
+| **Active-LOW** (default) | internal pull-up | falling | IR beam break, reed switch, microswitch |
+| **Active-HIGH** | internal pull-down | rising | PIR motion sensor (e.g. HC-SR501) |
+
+Active-LOW is the default so existing installs are unchanged. Choosing
+Active-HIGH lets you drive a Special Message from a motion sensor.
+
+#### Visitor Greeting (PIR) example
+
+A common setup is a **visitor-approach greeting**: wire an HC-SR501 PIR to a
+Special Message slot (OUT → a GPIO such as BCM 27 / physical pin 13, VCC → 5V,
+GND → GND), set that slot's polarity to **Active-HIGH**, give it a label like
+"Visitor Greeting", a cooldown (e.g. 60 s), and one or more short clips. When
+someone approaches, the greeting plays; a **letter or donation event takes
+priority and will preempt an in-progress greeting**, and the screensaver/idle
+playlist resumes automatically afterward. Each slot keeps its own event count.
+
+> Do **not** add the Special Message pin to FPP's GPIO Inputs — the SLED daemon
+> owns it directly (the plugin adds a disabled placeholder so FPP leaves it
+> alone).
+
+#### Verifying a sensor — Live Sensor States
+
+On the dashboard, the **Sensor States** button (next to *Show Log*) opens a live
+readout of every configured GPIO sensor: its pin, polarity, raw electrical
+level (HIGH/LOW) and interpreted state (idle / TRIGGERED), refreshed ~1×/s. Use
+it to confirm a PIR reads LOW when idle and flips to HIGH on motion.
+
 #### IR Break-Beam Wiring (Adafruit style)
 
 ```
