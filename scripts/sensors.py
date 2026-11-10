@@ -127,6 +127,10 @@ class MockInputs:
         except queue.Empty:
             return None
 
+    def snapshot_gpio(self) -> list:
+        """No physical pins in mock mode."""
+        return []
+
 
 # =============================================================================
 # LD2410 USB reader thread
@@ -680,7 +684,7 @@ def _warn_reserved_pins(pins_to_init: list) -> None:
     reserved = _build_reserved_gpio()
     if not reserved:
         return
-    for pin, _code, label in pins_to_init:
+    for pin, _code, label, _ah in pins_to_init:
         if pin in reserved:
             print(
                 f"[GPIOInputs] WARNING: {label} is configured on GPIO{pin}, "
@@ -705,8 +709,16 @@ class GPIOInputs:
 
     Emits: "l", "d", "s1", "s2", "a", "a_off", "b", "b_off"
 
-    special_pins — list of (bcm_pin, event_code, label) tuples for any extra
-    GPIO inputs beyond letter/donation.  Pass None or [] to disable.
+    special_pins — list of (bcm_pin, event_code, label, active_high) tuples for
+    any extra GPIO inputs beyond letter/donation.  Pass None or [] to disable.
+
+    active_high — per-pin polarity:
+      False (default) — active-LOW beam-break sensor: pull-up bias, triggers on
+                        the FALLING edge.  Letter and donation are always wired
+                        this way and are forced to active-LOW.
+      True            — active-HIGH sensor such as an HC-SR501 PIR: pull-down
+                        bias, triggers on the RISING edge.  Opt-in per special
+                        slot via specials.special_N.active_high in the config.
     """
 
     def __init__(
@@ -720,13 +732,27 @@ class GPIOInputs:
         self._threads: list = []
         self._readers: Dict[str, Ld2410UsbReader] = {}
 
+        # Live GPIO state for the dashboard diagnostic. Each entry is a dict:
+        #   {label, pin, code, active_high, backend, btn}
+        # backend is "gpiozero" or "rpigpio"; btn is the gpiozero Button (or
+        # None for the raw backend). Populated by the setup helpers below and
+        # read by snapshot_gpio().
+        self._diag_pins: list = []
+
         # Build the full ordered list of GPIO pins to initialise.
-        # Each entry is (bcm_pin, event_code, human_label).
-        pins_to_init: list = [(letter_pin, "l", "Letter")]
+        # Each entry is (bcm_pin, event_code, human_label, active_high).
+        # Letter and donation are always active-LOW beam-break sensors.
+        pins_to_init: list = [(letter_pin, "l", "Letter", False)]
         if donation_pin is not None:
-            pins_to_init.append((donation_pin, "d", "Donation"))
+            pins_to_init.append((donation_pin, "d", "Donation", False))
         if special_pins:
-            pins_to_init.extend(special_pins)
+            for entry in special_pins:
+                # Accept 3-tuples (legacy, active-low) or 4-tuples (with polarity)
+                if len(entry) == 4:
+                    pins_to_init.append(tuple(entry))
+                else:
+                    pin, code, label = entry[0], entry[1], entry[2]
+                    pins_to_init.append((pin, code, label, False))
 
         # ── GPIO sensors ──────────────────────────────────────────────────
         # Warn early about reserved hardware pins so the log is actionable
@@ -796,7 +822,7 @@ class GPIOInputs:
             _RPIGPIO.setwarnings(False)
 
             # Step 1 — pre-cleanup (handles stale state from unclean shutdown)
-            for pin, _code, _label in pins_to_init:
+            for pin, _code, _label, _ah in pins_to_init:
                 try:
                     _RPIGPIO.remove_event_detect(pin)
                 except Exception:
@@ -806,27 +832,42 @@ class GPIOInputs:
                 except Exception:
                     pass
 
-            # Step 2 — configure all pins as inputs with pull-up
-            for pin, _code, _label in pins_to_init:
-                _RPIGPIO.setup(pin, _RPIGPIO.IN, pull_up_down=_RPIGPIO.PUD_UP)
+            # Step 2 — configure each pin as an input with the bias that matches
+            # its polarity: pull-up for active-LOW beam breaks, pull-down for
+            # active-HIGH sensors (e.g. an HC-SR501 PIR that idles LOW).
+            for pin, _code, _label, active_high in pins_to_init:
+                bias = _RPIGPIO.PUD_DOWN if active_high else _RPIGPIO.PUD_UP
+                _RPIGPIO.setup(pin, _RPIGPIO.IN, pull_up_down=bias)
 
             # Step 3 — wait for sensor output to stabilize
             print("[GPIOInputs] Waiting 500 ms for beam sensors to stabilize...", flush=True)
             time.sleep(0.5)
 
-            # Step 4+5 — drain pending edge state, then arm edge detection
-            for pin, code, label in pins_to_init:
+            # Step 4+5 — drain pending edge state, then arm edge detection.
+            # Active-HIGH sensors trigger on the RISING edge (idle→motion);
+            # active-LOW beam breaks trigger on the FALLING edge (beam broken).
+            for pin, code, label, active_high in pins_to_init:
                 initial = _RPIGPIO.input(pin)  # drain any latched edge
-                print(f"[GPIOInputs] {label} sensor GPIO{pin} initial state: "
-                      f"{'HIGH (beam OK)' if initial else 'LOW (beam broken or sensor unpowered)'}",
+                if active_high:
+                    state_txt = "HIGH (active/motion)" if initial else "LOW (idle)"
+                else:
+                    state_txt = "HIGH (beam OK)" if initial else "LOW (beam broken or sensor unpowered)"
+                print(f"[GPIOInputs] {label} sensor GPIO{pin} initial state: {state_txt}",
                       flush=True)
+                edge = _RPIGPIO.RISING if active_high else _RPIGPIO.FALLING
                 _RPIGPIO.add_event_detect(
-                    pin, _RPIGPIO.FALLING,
+                    pin, edge,
                     callback=lambda ch, c=code: self._emit(c),
                     bouncetime=50,
                 )
                 self._gpio_pins.append(pin)
-                print(f"[GPIOInputs] {label} sensor on GPIO{pin} armed (RPi.GPIO)", flush=True)
+                self._diag_pins.append({
+                    "label": label, "pin": pin, "code": code,
+                    "active_high": active_high, "backend": "rpigpio", "btn": None,
+                })
+                print(f"[GPIOInputs] {label} sensor on GPIO{pin} armed "
+                      f"({'active-HIGH/RISING' if active_high else 'active-LOW/FALLING'}, RPi.GPIO)",
+                      flush=True)
 
         except Exception as exc:
             print(f"[GPIOInputs] WARNING: RPi.GPIO init failed ({exc}) — "
@@ -848,7 +889,11 @@ class GPIOInputs:
 
         Forces gpiozero to use RPi.GPIO as its pin backend instead of pigpio,
         so no pigpiod daemon is required and FPP's GPIO ownership is not fought.
-        Matches the original: Button(pin, pull_up=True, bounce_time=0.05).
+
+        Active-LOW beam breaks use Button(pin, pull_up=True) — "pressed" when the
+        pin goes LOW.  Active-HIGH sensors use Button(pin, pull_up=False), which
+        enables the internal pull-down so the pin idles LOW and "pressed" means
+        HIGH.  Either way when_pressed fires on the active-going edge.
         """
         try:
             factory = _RPiGPIOFactory()
@@ -857,12 +902,22 @@ class GPIOInputs:
             print("[GPIOInputs] Waiting 500 ms for beam sensors to stabilize...", flush=True)
             time.sleep(0.5)
 
-            for pin, code, label in pins_to_init:
-                btn = _GpiozeroButton(pin, pull_up=True, bounce_time=0.05, pin_factory=factory)
+            for pin, code, label, active_high in pins_to_init:
+                btn = _GpiozeroButton(
+                    pin, pull_up=(not active_high),
+                    bounce_time=0.05, pin_factory=factory)
                 btn.when_pressed = lambda c=code: self._emit(c)
                 self._gpiozero_btns.append(btn)   # must stay referenced or GC closes pin
-                state = "HIGH (beam OK)" if not btn.is_pressed else "LOW (beam broken or sensor unpowered)"
-                print(f"[GPIOInputs] {label} sensor on GPIO{pin} armed — "
+                self._diag_pins.append({
+                    "label": label, "pin": pin, "code": code,
+                    "active_high": active_high, "backend": "gpiozero", "btn": btn,
+                })
+                if active_high:
+                    state = "HIGH (active/motion)" if btn.is_pressed else "LOW (idle)"
+                else:
+                    state = "LOW (beam broken or sensor unpowered)" if btn.is_pressed else "HIGH (beam OK)"
+                print(f"[GPIOInputs] {label} sensor on GPIO{pin} armed "
+                      f"({'active-HIGH' if active_high else 'active-LOW'}) — "
                       f"initial state: {state} (gpiozero+RPiGPIO)", flush=True)
 
         except Exception as exc:
@@ -890,6 +945,47 @@ class GPIOInputs:
     def get_reader(self, side: str) -> Optional[Ld2410UsbReader]:
         """Return the Ld2410UsbReader for side 'A' or 'B', or None."""
         return self._readers.get(side.upper())
+
+    def snapshot_gpio(self) -> list:
+        """Return the live state of every configured GPIO sensor.
+
+        Used by the dashboard GPIO diagnostic so the user can watch a PIR
+        change from LOW to HIGH (or a beam break drop from HIGH to LOW).
+
+        Each entry:
+          {label, pin, code, active_high, raw ("HIGH"|"LOW"|None), active (bool|None)}
+        raw is the electrical level on the pin; active applies the sensor's
+        polarity (True = triggered).  None means the level could not be read.
+        """
+        out: list = []
+        for d in self._diag_pins:
+            raw_high: Optional[bool]
+            try:
+                if d["backend"] == "gpiozero" and d["btn"] is not None:
+                    # pin.state is the raw electrical level (0.0/1.0),
+                    # independent of the pull/polarity interpretation.
+                    raw_high = bool(d["btn"].pin.state)
+                elif _RPIGPIO_AVAILABLE:
+                    raw_high = bool(_RPIGPIO.input(d["pin"]))
+                else:
+                    raw_high = None
+            except Exception:
+                raw_high = None
+
+            if raw_high is None:
+                active = None
+            else:
+                active = raw_high if d["active_high"] else (not raw_high)
+
+            out.append({
+                "label":       d["label"],
+                "pin":         d["pin"],
+                "code":        d["code"],
+                "active_high": d["active_high"],
+                "raw":         None if raw_high is None else ("HIGH" if raw_high else "LOW"),
+                "active":      active,
+            })
+        return out
 
     def stop(self) -> None:
         for t in self._threads:

@@ -581,6 +581,8 @@ $pluginVersion = pluginVersion();
           $labelS2  = $cfg['specials']['special_2']['label'] ?? 'Special Message 2';
           $cdS1     = (float)($cfg['specials']['special_1']['cooldown_s'] ?? 5.0);
           $cdS2     = (float)($cfg['specials']['special_2']['cooldown_s'] ?? 5.0);
+          $ahS1     = !empty($cfg['specials']['special_1']['active_high']);
+          $ahS2     = !empty($cfg['specials']['special_2']['active_high']);
           ?>
 
           <!-- Special 1 -->
@@ -597,11 +599,16 @@ $pluginVersion = pluginVersion();
                        value="<?php echo $pinS1; ?>"
                        placeholder="none" />
               </div>
-              <input type="text" class="form-control form-control-sm" name="special1_label"
+              <input type="text" class="form-control form-control-sm mb-1" name="special1_label"
                      placeholder="Special Message 1"
                      title="User-facing label for this input (shows in logs and MQTT)"
                      value="<?php echo htmlspecialchars($labelS1); ?>"
                      oninput="sledSyncSpecialLabel(1, this.value)" />
+              <select class="form-select form-select-sm" name="special1_polarity"
+                      title="Sensor polarity. Active-LOW = beam-break (pull-up, triggers on falling edge). Active-HIGH = PIR such as HC-SR501 (pull-down, triggers on rising edge).">
+                <option value="low"  <?php echo $ahS1 ? '' : 'selected'; ?>>Active-LOW (beam break)</option>
+                <option value="high" <?php echo $ahS1 ? 'selected' : ''; ?>>Active-HIGH (PIR / motion)</option>
+              </select>
             </td>
             <td style="padding:8px;">
               <label class="mb-0"><i class="fas fa-fw fa-clock-rotate-left"></i> Cooldown</label>
@@ -630,11 +637,16 @@ $pluginVersion = pluginVersion();
                        value="<?php echo $pinS2; ?>"
                        placeholder="none" />
               </div>
-              <input type="text" class="form-control form-control-sm" name="special2_label"
+              <input type="text" class="form-control form-control-sm mb-1" name="special2_label"
                      placeholder="Special Message 2"
                      title="User-facing label for this input (shows in logs and MQTT)"
                      value="<?php echo htmlspecialchars($labelS2); ?>"
                      oninput="sledSyncSpecialLabel(2, this.value)" />
+              <select class="form-select form-select-sm" name="special2_polarity"
+                      title="Sensor polarity. Active-LOW = beam-break (pull-up, triggers on falling edge). Active-HIGH = PIR such as HC-SR501 (pull-down, triggers on rising edge).">
+                <option value="low"  <?php echo $ahS2 ? '' : 'selected'; ?>>Active-LOW (beam break)</option>
+                <option value="high" <?php echo $ahS2 ? 'selected' : ''; ?>>Active-HIGH (PIR / motion)</option>
+              </select>
             </td>
             <td style="padding:8px;">
               <label class="mb-0"><i class="fas fa-fw fa-clock-rotate-left"></i> Cooldown</label>
@@ -1048,6 +1060,10 @@ $pluginVersion = pluginVersion();
             title="View the last 60 lines of the daemon log to diagnose startup errors">
       <i class="fas fa-fw fa-terminal"></i> Show Log
     </button>
+    <button type="button" class="sled-btn sled-btn-sm" id="sledGpioBtn" onclick="sledToggleGpio()"
+            title="Show the live state of each sensor pin — e.g. verify a PIR goes LOW→HIGH on motion">
+      <i class="fas fa-fw fa-wave-square"></i> Sensor States
+    </button>
     <span id="sledDaemonBadge"
           class="badge <?php echo $running ? 'bg-success' : 'bg-secondary'; ?> align-self-center"
           title="SLED daemon status">
@@ -1086,6 +1102,43 @@ $pluginVersion = pluginVersion();
                  style="margin:0; padding:10px; max-height:320px; overflow-y:auto;
                         font-size:.78rem; line-height:1.4; white-space:pre-wrap;
                         background:#1a1a1a; color:#d0d0d0; border-radius:0 0 4px 4px;">Loading…</pre>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── Live Sensor States (GPIO diagnostic) ──────────────────────────── -->
+<div class="fppTableWrapper fppTableWrapperAsTable mb-3" id="sledGpioPanel" style="display:none;">
+  <div class="fppTableContents">
+    <table class="fppSelectableRowTable" style="width:100%;">
+      <thead>
+        <tr>
+          <th style="padding:8px;">
+            <div class="d-flex justify-content-between align-items-center">
+              <span><i class="fas fa-fw fa-wave-square"></i> Live Sensor States</span>
+              <div class="d-flex gap-2 align-items-center">
+                <span id="sledGpioStatus" class="text-muted small"></span>
+                <button type="button" class="sled-btn sled-btn-sm"
+                        onclick="document.getElementById('sledGpioPanel').style.display='none'; sledGpioStopPoll();">
+                  <i class="fas fa-fw fa-xmark"></i> Close
+                </button>
+              </div>
+            </div>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding:10px 12px;">
+            <div id="sledGpioRows" class="small text-muted">Waiting for daemon…</div>
+            <div class="text-muted small mt-2">
+              <strong>Raw</strong> is the electrical level on the pin.
+              <strong>State</strong> applies the sensor's polarity — a PIR reads
+              LOW when idle and HIGH (triggered) on motion; a beam break reads
+              HIGH when the beam is intact and triggers on LOW.
+            </div>
           </td>
         </tr>
       </tbody>
@@ -1242,6 +1295,85 @@ function sledShowLog() {
   if (!panel) return;
   panel.style.display = '';
   sledLoadLog();
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ── Live sensor-state diagnostic ──────────────────────────────────────────
+let sledGpioTimer = null;
+
+function sledGpioStopPoll() {
+  if (sledGpioTimer) { clearInterval(sledGpioTimer); sledGpioTimer = null; }
+}
+
+function sledEsc(s) {
+  return String(s).replace(/[&<>"']/g, c => (
+    { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+
+async function sledGpioPoll() {
+  const rows   = document.getElementById('sledGpioRows');
+  const status = document.getElementById('sledGpioStatus');
+  if (!rows) return;
+  try {
+    const res = await fetch(sledUrl('gpio_live.php'), { cache:'no-store' });
+    const j   = await res.json();
+    if (!j.active) {
+      if (status) status.textContent = '';
+      rows.innerHTML = '<span class="text-muted">' +
+        sledEsc(j.error || 'Daemon not running — no live GPIO data.') + '</span>';
+      return;
+    }
+    if (status) status.textContent = 'live';
+    const list = j.sensors || [];
+    if (!list.length) {
+      rows.innerHTML = '<span class="text-muted">No GPIO sensors configured.</span>';
+      return;
+    }
+    let html = '<table style="width:100%; border-collapse:collapse;" class="small">';
+    html += '<tr style="text-align:left; border-bottom:1px solid rgba(128,128,128,.3);">' +
+            '<th style="padding:4px 8px;">Sensor</th><th style="padding:4px 8px;">Pin</th>' +
+            '<th style="padding:4px 8px;">Polarity</th><th style="padding:4px 8px;">Raw</th>' +
+            '<th style="padding:4px 8px;">State</th></tr>';
+    for (const s of list) {
+      const pol    = s.active_high ? 'Active-HIGH' : 'Active-LOW';
+      const raw    = (s.raw === null || s.raw === undefined) ? '—' : s.raw;
+      let stateTxt, color;
+      if (s.active === null || s.active === undefined) {
+        stateTxt = 'unknown'; color = '#888';
+      } else if (s.active) {
+        stateTxt = 'TRIGGERED'; color = '#e0a500';
+      } else {
+        stateTxt = 'idle'; color = '#3aaa5c';
+      }
+      html += '<tr style="border-bottom:1px solid rgba(128,128,128,.12);">' +
+              '<td style="padding:4px 8px;">' + sledEsc(s.label) + '</td>' +
+              '<td style="padding:4px 8px;">GPIO' + sledEsc(s.pin) + '</td>' +
+              '<td style="padding:4px 8px;">' + pol + '</td>' +
+              '<td style="padding:4px 8px; font-family:monospace;">' + sledEsc(raw) + '</td>' +
+              '<td style="padding:4px 8px; font-weight:bold; color:' + color + ';">' +
+                sledEsc(stateTxt) + '</td></tr>';
+    }
+    html += '</table>';
+    rows.innerHTML = html;
+  } catch (e) {
+    rows.innerHTML = '<span class="text-muted">Failed to fetch sensor states: ' +
+      sledEsc(e) + '</span>';
+  }
+}
+
+function sledToggleGpio() {
+  const panel = document.getElementById('sledGpioPanel');
+  if (!panel) return;
+  const showing = panel.style.display !== 'none';
+  if (showing) {
+    panel.style.display = 'none';
+    sledGpioStopPoll();
+    return;
+  }
+  panel.style.display = '';
+  sledGpioPoll();
+  sledGpioStopPoll();
+  sledGpioTimer = setInterval(sledGpioPoll, 1000);
   panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 

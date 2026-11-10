@@ -116,6 +116,15 @@ $cfg["specials"]["special_2"]["label"]      = pStr("special2_label", "Special Me
 $cfg["specials"]["special_1"]["cooldown_s"] = pFloat("special1_cooldown", 5.0);
 $cfg["specials"]["special_2"]["cooldown_s"] = pFloat("special2_cooldown", 5.0);
 
+// Sensor polarity per special slot. active-LOW (false) is the default so
+// existing beam-break installs are unchanged; active-HIGH (true) supports
+// PIR-style sensors such as the HC-SR501. Only honored when the v2 form is
+// submitted, so an old cached form never silently flips polarity.
+if (isset($_POST['_sled_form_v2'])) {
+    $cfg["specials"]["special_1"]["active_high"] = (pStr("special1_polarity", "low") === "high");
+    $cfg["specials"]["special_2"]["active_high"] = (pStr("special2_polarity", "low") === "high");
+}
+
 $cfg["videos"]["special_1"] = pClips("special1_vid");
 $cfg["videos"]["special_2"] = pClips("special2_vid");
 
