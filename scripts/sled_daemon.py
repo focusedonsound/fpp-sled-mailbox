@@ -574,11 +574,9 @@ def main() -> None:
     ha.set_inbound_today(snap["inbound_today"])
     ha.set_outbound_today(snap["outbound_today"])
     ha.set_people_total(snap.get("people_total", 0))
+    ha.set_people_today(snap.get("people_today", 0))
     ha.set_letter_total(snap["letter_total"])
     ha.set_donation_total(snap["donation_total"])
-
-    people_today_count: int = db.get_today_count("person")
-    ha.set_people_today(people_today_count)
 
     letter_today_count:   int = db.get_today_count("letter")
     donation_today_count: int = db.get_today_count("donation")
@@ -671,7 +669,6 @@ def main() -> None:
                 donation_today_count  = 0
                 special1_today_count  = 0
                 special2_today_count  = 0
-                people_today_count    = 0
                 ha.set_car_today(0)
                 ha.set_inbound_today(0)
                 ha.set_outbound_today(0)
@@ -942,8 +939,7 @@ def main() -> None:
                     if ((now_ts - last_person_time) > car_cooldown_s
                             and parked_a.allow_trigger()):
                         last_person_time = now_ts
-                        people_today_count += 1
-                        _record_person(db, ha, "A", people_today_count)
+                        _record_person(db, ha, "A")
                     continue
                 if (tB is not None
                         and 0 < (tA - tB) <= seq_window_s
@@ -965,8 +961,7 @@ def main() -> None:
                     if ((now_ts - last_person_time) > car_cooldown_s
                             and parked_b.allow_trigger()):
                         last_person_time = now_ts
-                        people_today_count += 1
-                        _record_person(db, ha, "B", people_today_count)
+                        _record_person(db, ha, "B")
                     continue
                 if (tA is not None
                         and 0 < (tB - tA) <= seq_window_s
@@ -1021,16 +1016,22 @@ def _record_car(db: SledDB, ha: HAMqtt, friendly: str, label_tow: str, dir_seq: 
              friendly, ct, ctd, itd, otd)
 
 
-def _record_person(db: SledDB, ha: HAMqtt, side: str, people_today: int) -> None:
-    """Record one person detection (single-sensor presence-count mode)."""
+def _record_person(db: SledDB, ha: HAMqtt, side: str) -> None:
+    """Record one person detection (single-sensor presence-count mode).
+
+    Mirrors _record_car: people_total and people_today are DB counters
+    (people_today is zeroed by the midnight reset), so the analytics page reads
+    the same source of truth after a daemon restart.
+    """
     pt      = db.increment_counter("people_total")
+    ptd     = db.increment_counter("people_today")
     now_iso = dt.datetime.now(dt.timezone.utc).astimezone().isoformat()
     ha.set_people_total(pt)
-    ha.set_people_today(people_today)
+    ha.set_people_today(ptd)
     ha.set_last_person_time(now_iso)
     ha.event("person", {"radar": side, "ts": now_iso})
     db.log_event("person", {"radar": side})
-    log.info("[People] +1 (radar %s)  total=%d today=%d", side, pt, people_today)
+    log.info("[People] +1 (radar %s)  total=%d today=%d", side, pt, ptd)
 
 
 if __name__ == "__main__":
