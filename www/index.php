@@ -1155,10 +1155,11 @@ $pluginVersion = pluginVersion();
           <td style="padding:10px 12px;">
             <div id="sledGpioRows" class="small text-muted">Waiting for daemon…</div>
             <div class="text-muted small mt-2">
-              <strong>Raw</strong> is the electrical level on the pin.
-              <strong>State</strong> applies the sensor's polarity — a PIR reads
-              LOW when idle and HIGH (triggered) on motion; a beam break reads
-              HIGH when the beam is intact and triggers on LOW.
+              For GPIO sensors, <strong>Raw</strong> is the electrical level on the
+              pin and <strong>State</strong> applies its polarity — a PIR reads LOW
+              when idle and HIGH (triggered) on motion; a beam break reads HIGH when
+              the beam is intact and triggers on LOW. <strong>Radar</strong> sensors
+              show PRESENT while a target is detected and clear when none is.
             </div>
           </td>
         </tr>
@@ -1341,35 +1342,38 @@ async function sledGpioPoll() {
     if (!j.active) {
       if (status) status.textContent = '';
       rows.innerHTML = '<span class="text-muted">' +
-        sledEsc(j.error || 'Daemon not running — no live GPIO data.') + '</span>';
+        sledEsc(j.error || 'Daemon not running — no live sensor data.') + '</span>';
       return;
     }
     if (status) status.textContent = 'live';
     const list = j.sensors || [];
     if (!list.length) {
-      rows.innerHTML = '<span class="text-muted">No GPIO sensors configured.</span>';
+      rows.innerHTML = '<span class="text-muted">No sensors configured.</span>';
       return;
     }
     let html = '<table style="width:100%; border-collapse:collapse;" class="small">';
     html += '<tr style="text-align:left; border-bottom:1px solid rgba(128,128,128,.3);">' +
-            '<th style="padding:4px 8px;">Sensor</th><th style="padding:4px 8px;">Pin</th>' +
-            '<th style="padding:4px 8px;">Polarity</th><th style="padding:4px 8px;">Raw</th>' +
+            '<th style="padding:4px 8px;">Sensor</th><th style="padding:4px 8px;">Pin / Port</th>' +
+            '<th style="padding:4px 8px;">Type</th><th style="padding:4px 8px;">Raw</th>' +
             '<th style="padding:4px 8px;">State</th></tr>';
     for (const s of list) {
-      const pol    = s.active_high ? 'Active-HIGH' : 'Active-LOW';
-      const raw    = (s.raw === null || s.raw === undefined) ? '—' : s.raw;
+      const isRadar = (s.kind === 'radar');
+      const pinTxt  = isRadar ? s.pin : ('GPIO' + s.pin);
+      const typeTxt = isRadar ? 'Radar'
+                              : (s.active_high ? 'Active-HIGH' : 'Active-LOW');
+      const raw     = (s.raw === null || s.raw === undefined) ? '—' : s.raw;
       let stateTxt, color;
       if (s.active === null || s.active === undefined) {
         stateTxt = 'unknown'; color = '#888';
       } else if (s.active) {
-        stateTxt = 'TRIGGERED'; color = '#e0a500';
+        stateTxt = isRadar ? 'PRESENT' : 'TRIGGERED'; color = '#e0a500';
       } else {
-        stateTxt = 'idle'; color = '#3aaa5c';
+        stateTxt = isRadar ? 'clear' : 'idle'; color = '#3aaa5c';
       }
       html += '<tr style="border-bottom:1px solid rgba(128,128,128,.12);">' +
               '<td style="padding:4px 8px;">' + sledEsc(s.label) + '</td>' +
-              '<td style="padding:4px 8px;">GPIO' + sledEsc(s.pin) + '</td>' +
-              '<td style="padding:4px 8px;">' + pol + '</td>' +
+              '<td style="padding:4px 8px; font-family:monospace;">' + sledEsc(pinTxt) + '</td>' +
+              '<td style="padding:4px 8px;">' + typeTxt + '</td>' +
               '<td style="padding:4px 8px; font-family:monospace;">' + sledEsc(raw) + '</td>' +
               '<td style="padding:4px 8px; font-weight:bold; color:' + color + ';">' +
                 sledEsc(stateTxt) + '</td></tr>';

@@ -947,17 +947,24 @@ class GPIOInputs:
         return self._readers.get(side.upper())
 
     def snapshot_gpio(self) -> list:
-        """Return the live state of every configured GPIO sensor.
+        """Return the live state of every configured sensor for the dashboard.
 
-        Used by the dashboard GPIO diagnostic so the user can watch a PIR
-        change from LOW to HIGH (or a beam break drop from HIGH to LOW).
+        Covers both GPIO inputs (letter/donation/special — watch a PIR go
+        LOW→HIGH or a beam break drop to LOW) and the LD2410 radar sensors
+        (watch presence go absent→present), so one panel reflects everything
+        the daemon is tracking.
 
         Each entry:
-          {label, pin, code, active_high, raw ("HIGH"|"LOW"|None), active (bool|None)}
-        raw is the electrical level on the pin; active applies the sensor's
-        polarity (True = triggered).  None means the level could not be read.
+          {kind: "gpio"|"radar", label, pin, code,
+           active_high (gpio only, else None),
+           raw, active (bool|None)}
+        For GPIO, raw is the electrical level ("HIGH"/"LOW") and active applies
+        the pin's polarity.  For radar, pin is the serial port, raw is
+        "PRESENT"/"ABSENT" and active is True while a target is present.
         """
         out: list = []
+
+        # ── GPIO inputs ──────────────────────────────────────────────────
         for d in self._diag_pins:
             raw_high: Optional[bool]
             try:
@@ -978,6 +985,7 @@ class GPIOInputs:
                 active = raw_high if d["active_high"] else (not raw_high)
 
             out.append({
+                "kind":        "gpio",
                 "label":       d["label"],
                 "pin":         d["pin"],
                 "code":        d["code"],
@@ -985,6 +993,21 @@ class GPIOInputs:
                 "raw":         None if raw_high is None else ("HIGH" if raw_high else "LOW"),
                 "active":      active,
             })
+
+        # ── LD2410 radar sensors ─────────────────────────────────────────
+        for side in sorted(self._readers):
+            reader = self._readers[side]
+            present = reader.presence_since is not None
+            out.append({
+                "kind":        "radar",
+                "label":       f"Radar {side}",
+                "pin":         reader.port,
+                "code":        reader.event_code,
+                "active_high": None,
+                "raw":         "PRESENT" if present else "ABSENT",
+                "active":      present,
+            })
+
         return out
 
     def stop(self) -> None:
