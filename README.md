@@ -554,11 +554,22 @@ Between events, SLED starts the `idle_playlist` (default: `idle_loop`). Create a
 
 ---
 
-## 📡 Radar Car Detection (HLK-LD2410B)
+## 📡 Radar Detection (HLK-LD2410B)
 
 The LD2410B is a **24 GHz microwave radar** module — it detects presence using radio waves, not cameras. Perfect for driveway use (privacy-friendly!).
 
-### How Direction Detection Works
+### Tracking Mode: Cars vs People
+
+The **Tracking Mode** setting (Settings → Radar Counter) chooses what the radar counts:
+
+| Mode | Sensors | Counts | Analytics |
+|---|---|---|---|
+| **Cars** (default) | Two (A + B) | Directional passes using the A→B / B→A sequence | Inbound / Outbound |
+| **People** | One is enough | Each new presence = **one person** (no direction) | People Today / People total |
+
+Use **People** mode to count visitors with a single sensor. The `Radar Cooldown` doubles as the minimum gap between people so one visitor lingering in front of the sensor isn't counted repeatedly, and the Parked Timeout still suppresses a stationary target. In People mode, Sensor B, the Sequence/Direction windows, and Direction Labels are ignored, and the Analytics dashboard shows a **People** card and chart in place of Cars/Inbound/Outbound.
+
+### How Direction Detection Works (Cars mode)
 
 SLED uses **two sensors** positioned along the driving path:
 

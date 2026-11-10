@@ -1,5 +1,8 @@
 {
   "enabled": true,
+  "tracking": {
+    "mode": "cars"
+  },
   "paths": {
     "videos": "/home/fpp/media/plugins/fpp-sled-mailbox/videos"
   },

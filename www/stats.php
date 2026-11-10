@@ -43,20 +43,22 @@ if (!in_array($period, ['day', 'week', 'month'], true)) $period = 'day';
 $cfg        = load_cfg($CFG_PATH);
 $carEnabled = !empty($cfg['ld2410']['enabled']);
 $labelTow   = $cfg['direction']['label_toward'] ?? 'Inbound';
+$trackMode  = (($cfg['tracking']['mode'] ?? 'cars') === 'people') ? 'people' : 'cars';
 
 // ── Skeleton response ─────────────────────────────────────────────────────────
 
 $out = [
     'daemon_running' => daemon_running($PID_FILE),
     'car_enabled'    => $carEnabled,
+    'tracking_mode'  => $trackMode,
     'label_inbound'  => $labelTow,
     'label_outbound' => $cfg['direction']['label_away'] ?? 'Outbound',
     'refresh_ts'     => date('Y-m-d H:i:s'),
     'period'         => $period,
     'days'           => $days,
-    'today'          => ['letters' => 0, 'donations' => 0, 'inbound' => 0, 'outbound' => 0],
-    'alltime'        => ['letters' => 0, 'donations' => 0, 'cars' => 0],
-    'chart'          => ['labels' => [], 'letters' => [], 'donations' => [], 'inbound' => [], 'outbound' => []],
+    'today'          => ['letters' => 0, 'donations' => 0, 'inbound' => 0, 'outbound' => 0, 'people' => 0],
+    'alltime'        => ['letters' => 0, 'donations' => 0, 'cars' => 0, 'people' => 0],
+    'chart'          => ['labels' => [], 'letters' => [], 'donations' => [], 'inbound' => [], 'outbound' => [], 'people' => []],
     'recent'         => [],
 ];
 
@@ -87,18 +89,21 @@ try {
         if ($r['kind'] === 'donation') $out['today']['donations'] = (int)$r['cnt'];
     }
 
-    // Today's car + all-time totals from counters table
+    // Today's car/people + all-time totals from counters table
     $res = $db->query(
         "SELECT key, value FROM counters
-         WHERE key IN ('inbound_today','outbound_today','letter_total','donation_total','car_total')"
+         WHERE key IN ('inbound_today','outbound_today','people_today',
+                       'letter_total','donation_total','car_total','people_total')"
     );
     while ($r = $res->fetchArray(SQLITE3_ASSOC)) {
         switch ($r['key']) {
             case 'inbound_today':  $out['today']['inbound']     = (int)$r['value']; break;
             case 'outbound_today': $out['today']['outbound']    = (int)$r['value']; break;
+            case 'people_today':   $out['today']['people']      = (int)$r['value']; break;
             case 'letter_total':   $out['alltime']['letters']   = (int)$r['value']; break;
             case 'donation_total': $out['alltime']['donations'] = (int)$r['value']; break;
             case 'car_total':      $out['alltime']['cars']      = (int)$r['value']; break;
+            case 'people_total':   $out['alltime']['people']    = (int)$r['value']; break;
         }
     }
 
@@ -109,12 +114,13 @@ try {
     $donateMap = [];
     $inMap     = [];
     $outMap    = [];
+    $peopleMap = [];
 
     if ($period === 'day') {
         for ($i = $days - 1; $i >= 0; $i--) {
             $d = date('Y-m-d', strtotime("-{$i} days"));
             $labels[] = $d;
-            $letterMap[$d] = $donateMap[$d] = $inMap[$d] = $outMap[$d] = 0;
+            $letterMap[$d] = $donateMap[$d] = $inMap[$d] = $outMap[$d] = $peopleMap[$d] = 0;
         }
         $groupExpr = "substr(ts,1,10)";   // YYYY-MM-DD
 
@@ -125,7 +131,7 @@ try {
         while ($ptr < $end) {
             $k = date('Y', $ptr) . '-W' . str_pad((int)date('W', $ptr), 2, '0', STR_PAD_LEFT);
             $labels[] = $k;
-            $letterMap[$k] = $donateMap[$k] = $inMap[$k] = $outMap[$k] = 0;
+            $letterMap[$k] = $donateMap[$k] = $inMap[$k] = $outMap[$k] = $peopleMap[$k] = 0;
             $ptr += 7 * 86400;
         }
         $groupExpr = "strftime('%Y-W%W', substr(ts,1,10))";
@@ -136,7 +142,7 @@ try {
         while ($ptr <= $endM) {
             $k = date('Y-m', $ptr);
             $labels[] = $k;
-            $letterMap[$k] = $donateMap[$k] = $inMap[$k] = $outMap[$k] = 0;
+            $letterMap[$k] = $donateMap[$k] = $inMap[$k] = $outMap[$k] = $peopleMap[$k] = 0;
             $ptr = mktime(0, 0, 0, (int)date('m', $ptr) + 1, 1, (int)date('Y', $ptr));
         }
         $groupExpr = "substr(ts,1,7)";    // YYYY-MM
@@ -178,12 +184,29 @@ try {
         else                         $outMap[$k] += (int)$r['cnt'];
     }
 
+    // ── People counts (presence-count mode) ────────────────────────────────────
+
+    $stmt = $db->prepare(
+        "SELECT {$groupExpr} AS bucket, COUNT(*) AS cnt
+         FROM events
+         WHERE kind='person' AND substr(ts,1,10) >= :cutoff
+         GROUP BY bucket"
+    );
+    $stmt->bindValue(':cutoff', $cutoff, SQLITE3_TEXT);
+    $res = $stmt->execute();
+    while ($r = $res->fetchArray(SQLITE3_ASSOC)) {
+        $k = $r['bucket'];
+        if (!array_key_exists($k, $peopleMap)) continue;
+        $peopleMap[$k] = (int)$r['cnt'];
+    }
+
     $out['chart'] = [
         'labels'    => $labels,
         'letters'   => array_values($letterMap),
         'donations' => array_values($donateMap),
         'inbound'   => array_values($inMap),
         'outbound'  => array_values($outMap),
+        'people'    => array_values($peopleMap),
     ];
 
     // ── Recent events (last 50) ───────────────────────────────────────────────

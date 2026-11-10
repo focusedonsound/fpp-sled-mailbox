@@ -128,6 +128,10 @@ if (isset($_POST['_sled_form_v2'])) {
 $cfg["videos"]["special_1"] = pClips("special1_vid");
 $cfg["videos"]["special_2"] = pClips("special2_vid");
 
+// ── Radar tracking mode ─────────────────────────────────────────────────────
+// "cars" (default, directional 2-sensor) or "people" (single-sensor presence count).
+$cfg["tracking"]["mode"] = (pStr("tracking_mode", "cars") === "people") ? "people" : "cars";
+
 // ── LD2410 ────────────────────────────────────────────────────────────────
 $cfg["ld2410"]["enabled"]            = pBool("ld2410_enabled");
 $cfg["ld2410"]["A"]["port"]          = pStr("ld2410_port_a", "/dev/ttyUSB0");

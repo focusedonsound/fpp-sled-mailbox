@@ -30,8 +30,8 @@ try {
     $today = date('Y-m-d');
     $now   = date('c');
 
-    // ── Zero today's car counters ─────────────────────────────────────────────
-    foreach (['car_today', 'inbound_today', 'outbound_today'] as $key) {
+    // ── Zero today's car/people counters ──────────────────────────────────────
+    foreach (['car_today', 'inbound_today', 'outbound_today', 'people_today'] as $key) {
         $db->exec(
             "INSERT INTO counters(key,value,updated) VALUES('{$key}',0,'{$now}')
              ON CONFLICT(key) DO UPDATE SET value=0, updated='{$now}'"
@@ -48,8 +48,8 @@ try {
 
     // ── Recalculate all-time totals from remaining events ─────────────────────
     // (keeps counters table consistent with events table as source of truth)
-    foreach (['letter', 'donation', 'car'] as $kind) {
-        $map = ['letter' => 'letter_total', 'donation' => 'donation_total', 'car' => 'car_total'];
+    foreach (['letter', 'donation', 'car', 'person'] as $kind) {
+        $map = ['letter' => 'letter_total', 'donation' => 'donation_total', 'car' => 'car_total', 'person' => 'people_total'];
         $key = $map[$kind];
         $cnt = $db->querySingle("SELECT COUNT(*) FROM events WHERE kind='{$kind}'") ?? 0;
         $db->exec(

@@ -487,6 +487,13 @@ def main() -> None:
     def label_for(seq: str) -> str:
         return label_tow if seq == toward_ref else label_away
 
+    # ── Radar tracking mode ──────────────────────────────────────────────────
+    # "cars"   — two-sensor directional counting (A/B sequence → inbound/outbound)
+    # "people" — single-sensor presence count: each new presence = one person,
+    #            no direction. Works with one radar (e.g. counting visitors).
+    tracking_mode = (cfg.get("tracking", {}).get("mode") or "cars").lower()
+    people_mode   = (tracking_mode == "people")
+
     # ── Timings ────────────────────────────────────────────────────────────────
     car_cfg          = cfg.get("car", {})
     seq_window_s     = float(car_cfg.get("direction_window_s",
@@ -566,6 +573,8 @@ def main() -> None:
     ha.set_car_today(snap["car_today"])
     ha.set_inbound_today(snap["inbound_today"])
     ha.set_outbound_today(snap["outbound_today"])
+    ha.set_people_total(snap.get("people_total", 0))
+    ha.set_people_today(snap.get("people_today", 0))
     ha.set_letter_total(snap["letter_total"])
     ha.set_donation_total(snap["donation_total"])
 
@@ -624,6 +633,7 @@ def main() -> None:
     tA: Optional[float] = None
     tB: Optional[float] = None
     last_car_time:       float = 0.0
+    last_person_time:    float = 0.0
     last_letter_time:    float = 0.0
     last_donation_time:  float = 0.0
     last_special1_time:  float = 0.0
@@ -644,6 +654,7 @@ def main() -> None:
     # Throttle for the GPIO live-state diagnostic snapshot (~2 Hz).
     last_gpio_write: float = 0.0
 
+    log.info("Radar tracking mode: %s", "people (presence count)" if people_mode else "cars (directional)")
     log.info("SLED daemon running (PID=%d)  idle_playlist=%s",
              os.getpid(), pl_idle)
 
@@ -661,6 +672,7 @@ def main() -> None:
                 ha.set_car_today(0)
                 ha.set_inbound_today(0)
                 ha.set_outbound_today(0)
+                ha.set_people_today(0)
                 ha.set_letter_today(0)
                 ha.set_donation_today(0)
                 ha.set_special_today(1, 0)
@@ -920,6 +932,15 @@ def main() -> None:
             if ev == "a":
                 parked_a.on_presence(now_ts)
                 tA = now_ts
+                if people_mode:
+                    # Single-sensor presence count: each new presence = 1 person.
+                    # Shared cooldown across both sensors avoids double-counting
+                    # one person who crosses A and B.
+                    if ((now_ts - last_person_time) > car_cooldown_s
+                            and parked_a.allow_trigger()):
+                        last_person_time = now_ts
+                        _record_person(db, ha, "A")
+                    continue
                 if (tB is not None
                         and 0 < (tA - tB) <= seq_window_s
                         and (now_ts - last_car_time) > car_cooldown_s
@@ -936,6 +957,12 @@ def main() -> None:
             if ev == "b":
                 parked_b.on_presence(now_ts)
                 tB = now_ts
+                if people_mode:
+                    if ((now_ts - last_person_time) > car_cooldown_s
+                            and parked_b.allow_trigger()):
+                        last_person_time = now_ts
+                        _record_person(db, ha, "B")
+                    continue
                 if (tA is not None
                         and 0 < (tB - tA) <= seq_window_s
                         and (now_ts - last_car_time) > car_cooldown_s
@@ -987,6 +1014,24 @@ def _record_car(db: SledDB, ha: HAMqtt, friendly: str, label_tow: str, dir_seq: 
 
     log.info("[Car] %s  total=%d today=%d (in=%d out=%d)",
              friendly, ct, ctd, itd, otd)
+
+
+def _record_person(db: SledDB, ha: HAMqtt, side: str) -> None:
+    """Record one person detection (single-sensor presence-count mode).
+
+    Mirrors _record_car: people_total and people_today are DB counters
+    (people_today is zeroed by the midnight reset), so the analytics page reads
+    the same source of truth after a daemon restart.
+    """
+    pt      = db.increment_counter("people_total")
+    ptd     = db.increment_counter("people_today")
+    now_iso = dt.datetime.now(dt.timezone.utc).astimezone().isoformat()
+    ha.set_people_total(pt)
+    ha.set_people_today(ptd)
+    ha.set_last_person_time(now_iso)
+    ha.event("person", {"radar": side, "ts": now_iso})
+    db.log_event("person", {"radar": side})
+    log.info("[People] +1 (radar %s)  total=%d today=%d", side, pt, ptd)
 
 
 if __name__ == "__main__":

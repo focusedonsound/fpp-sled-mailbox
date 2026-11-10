@@ -673,8 +673,8 @@ $pluginVersion = pluginVersion();
         <thead>
           <tr>
             <th colspan="4" style="padding:8px;">
-              <i class="fas fa-fw fa-car"></i> Car Counter (HLK-LD2410B Radar)
-              <span class="text-muted fw-normal small ms-2">Optional &mdash; requires two HLK-LD2410B sensors connected via USB</span>
+              <i class="fas fa-fw fa-car"></i> Radar Counter (HLK-LD2410B)
+              <span class="text-muted fw-normal small ms-2">Optional &mdash; count cars (2 sensors, directional) or people (1 sensor, presence)</span>
             </th>
           </tr>
         </thead>
@@ -683,14 +683,35 @@ $pluginVersion = pluginVersion();
           <!-- Enable toggle -->
           <tr>
             <td style="width:200px; padding:8px;">
-              <label class="mb-0">Enable Car Counter</label>
-              <div class="text-muted small">Activates both radar sensors</div>
+              <label class="mb-0">Enable Radar</label>
+              <div class="text-muted small">Activates the radar sensor(s)</div>
             </td>
             <td colspan="3" style="padding:8px;">
               <div class="form-check form-switch">
                 <input class="form-check-input" type="checkbox" name="ld2410_enabled" id="ld2410Enabled"
                        value="1" <?php echo !empty($cfg['ld2410']['enabled']) ? 'checked' : ''; ?>
                        onchange="sledToggle('radarRows', this.checked); sledRadarWidgetShow(this.checked)" />
+              </div>
+            </td>
+          </tr>
+
+          <!-- Tracking mode -->
+          <tr>
+            <td style="padding:8px;">
+              <label class="mb-0"><i class="fas fa-fw fa-arrows-to-dot"></i> Tracking Mode</label>
+              <div class="text-muted small">What the radar counts</div>
+            </td>
+            <td colspan="3" style="padding:8px;">
+              <?php $tmode = (($cfg['tracking']['mode'] ?? 'cars') === 'people') ? 'people' : 'cars'; ?>
+              <select name="tracking_mode" class="form-select form-select-sm" style="max-width:460px;"
+                      title="Cars = two sensors, directional in/out counting. People = single sensor, counts each presence as one person (no direction).">
+                <option value="cars"   <?php echo $tmode === 'cars'   ? 'selected' : ''; ?>>Cars &mdash; directional (2 sensors, Inbound/Outbound)</option>
+                <option value="people" <?php echo $tmode === 'people' ? 'selected' : ''; ?>>People &mdash; presence count (1 sensor, no direction)</option>
+              </select>
+              <div class="text-muted small mt-1">
+                In <strong>People</strong> mode a single sensor is enough; Sensor&nbsp;B, the
+                Sequence/Direction windows and Direction Labels are ignored, and the Analytics
+                page shows a People counter instead of Cars/Inbound/Outbound.
               </div>
             </td>
           </tr>
