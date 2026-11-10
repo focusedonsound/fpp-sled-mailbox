@@ -131,9 +131,30 @@ class FPPPlayer:
 
     def start_playlist(self, name: str, repeat: bool = False) -> None:
         """Start a named FPP playlist (non-blocking).
-        Pass repeat=True for the idle loop so it runs continuously."""
+        Pass repeat=True for the idle loop so it runs continuously.
+
+        When repeat=True (the idle-resume path), skip the command if FPP has
+        already resumed that same playlist on its own after an event video.
+        FPP auto-resumes the idle playlist when the event playlist finishes, so
+        an unconditional restart here produced a double transition:
+            event video → idle → (SLED restart) → idle   (two black flashes).
+
+        The guard only skips when status is "playing" AND current_playlist
+        matches the requested name.  If current_playlist is empty — which FPP
+        9.x does after ~5 s of playback — the match fails and we fall through
+        to the restart, so idle still recovers on those versions.  This is why
+        the check is intentionally strict rather than "skip whenever playing".
+        """
         if not name:
             return
+        if repeat:
+            status = self._status()
+            if status and status.get("status_name") == "playing":
+                current = status.get("current_playlist") or {}
+                if current.get("playlist") == name:
+                    log.info("[FPP] idle playlist already playing: %s — "
+                             "skipping restart", name)
+                    return
         log.info("[FPP] start playlist: %s (repeat=%s)", name, repeat)
         self._cmd("Start Playlist", [name, "true" if repeat else "false"])
 
@@ -789,10 +810,10 @@ def main() -> None:
                 ha.set_letter_today(letter_today_count)
                 db.log_event("letter", event_meta)
 
-                # Always resume idle after the event.
-                # idle_was_playing check removed: in FPP 9.x current_playlist()
-                # drops to "" after ~5 s of playback so it always returned False,
-                # silently preventing idle from restarting after every event.
+                # Resume idle after the event.  start_playlist() skips the
+                # command if FPP already auto-resumed this same playlist (see
+                # its docstring) — on FPP 9.x, where current_playlist reports
+                # empty, the guard falls through and idle restarts as before.
                 fpp.start_playlist(pl_idle, repeat=True)
                 continue
 
